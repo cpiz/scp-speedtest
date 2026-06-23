@@ -1,10 +1,21 @@
 # scp-speedtest
 
+[![CI](https://github.com/cpiz/scp-speedtest/actions/workflows/ci.yml/badge.svg)](https://github.com/cpiz/scp-speedtest/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/cpiz/scp-speedtest?sort=semver)](https://github.com/cpiz/scp-speedtest/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Shell: Bash](https://img.shields.io/badge/shell-bash-4EAA25.svg)](scp-speedtest.sh)
+
 [中文文档](README.zh-CN.md)
 
 A Bash CLI that measures bidirectional network throughput with `scp`. It creates fixed-size test files on both the local and remote sides: the local file is used for upload testing, and the remote file is used for download testing, so the two directions are measured independently.
 
 The default test file size is `100M`. Authentication, keys, jump hosts, SSH config, and prompts are handled by the system `ssh/scp` commands.
+
+## Demo
+
+![scp-speedtest terminal demo](docs/demo.svg)
+
+The source recording is available as an asciinema cast: [docs/demo.cast](docs/demo.cast).
 
 ## Quick Start
 

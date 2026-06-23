@@ -47,7 +47,7 @@ dist:
 	install -m 0755 $(SCRIPT) "$(DIST_ROOT)/$(SCRIPT)"
 	install -m 0755 $(INSTALL_SCRIPT) "$(DIST_ROOT)/$(INSTALL_SCRIPT)"
 	install -m 0644 README.md README.zh-CN.md CHANGELOG.md CONTRIBUTING.md LICENSE SECURITY.md Makefile "$(DIST_ROOT)/"
-	install -m 0644 docs/json-output.md "$(DIST_ROOT)/docs/"
+	install -m 0644 docs/json-output.md docs/demo.svg docs/demo.cast "$(DIST_ROOT)/docs/"
 	install -m 0644 schemas/scp-speedtest-output.schema.json "$(DIST_ROOT)/schemas/"
 	tar -C dist -czf "$(DIST_ARCHIVE)" "$(DIST_NAME)"
 	@echo "$(DIST_ARCHIVE)"

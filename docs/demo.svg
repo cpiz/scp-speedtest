@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="600" viewBox="0 0 980 600" role="img" aria-labelledby="title desc">
+  <title id="title">scp-speedtest terminal demo</title>
+  <desc id="desc">A terminal screenshot showing scp-speedtest progress events and the final result card.</desc>
+  <rect width="980" height="600" rx="8" fill="#101418"/>
+  <rect x="1" y="1" width="978" height="598" rx="8" fill="none" stroke="#2a333d"/>
+  <rect x="0" y="0" width="980" height="38" rx="8" fill="#1a2129"/>
+  <circle cx="24" cy="19" r="6" fill="#ff5f57"/>
+  <circle cx="44" cy="19" r="6" fill="#ffbd2e"/>
+  <circle cx="64" cy="19" r="6" fill="#28c840"/>
+  <text x="490" y="25" text-anchor="middle" font-family="Menlo, Consolas, 'Liberation Mono', monospace" font-size="14" fill="#9aa7b2">scp-speedtest demo</text>
+  <g font-family="Menlo, Consolas, 'Liberation Mono', monospace" font-size="16">
+    <text x="28" y="70" fill="#7ee787">$ scp-speedtest my-vps --size 100M</text>
+    <text x="28" y="106" fill="#c9d1d9">[13:20:01] Target: my-vps</text>
+    <text x="28" y="134" fill="#c9d1d9">[13:20:01] Creating local test file: .../scp-speedtest-100M.bin</text>
+    <text x="28" y="162" fill="#c9d1d9">[13:20:02] Connecting and creating remote temporary directory: my-vps</text>
+    <text x="28" y="190" fill="#c9d1d9">[13:20:03] Remote temporary directory created: /tmp/scp-speedtest.xxxxxx</text>
+    <text x="28" y="218" fill="#c9d1d9">[13:20:03] Starting upload: scp-speedtest-100M.bin -&gt; my-vps:/tmp/...</text>
+    <text x="28" y="246" fill="#8b949e">scp-speedtest-100M.bin                  100%  100MB  14.8MB/s  00:06</text>
+    <text x="28" y="274" fill="#c9d1d9">[13:20:10] Starting download: my-vps:/tmp/... -&gt; local download file</text>
+    <text x="28" y="302" fill="#8b949e">scp-speedtest-100M.bin                  100%  100MB  14.2MB/s  00:07</text>
+    <text x="28" y="330" fill="#c9d1d9">[13:20:17] Checksum verification passed</text>
+    <text x="28" y="376" fill="#58a6ff">======================================================================</text>
+    <text x="28" y="404" fill="#f0f6fc">scp-speedtest result</text>
+    <text x="28" y="432" fill="#c9d1d9">GitHub   : https://github.com/cpiz/scp-speedtest</text>
+    <text x="28" y="460" fill="#c9d1d9">Target   : my-vps</text>
+    <text x="28" y="488" fill="#c9d1d9">Test file: scp-speedtest-100M.bin (100.00 MiB / 104857600 bytes)</text>
+    <text x="28" y="516" fill="#f0f6fc">Upload   : COMPLETED       100.00 / 100.00 MiB    6.746740 s    14.82 MiB/s</text>
+    <text x="28" y="544" fill="#f0f6fc">Download : COMPLETED       100.00 / 100.00 MiB    7.041432 s    14.20 MiB/s</text>
+    <text x="28" y="572" fill="#58a6ff">======================================================================</text>
+  </g>
+</svg>

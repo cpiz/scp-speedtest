@@ -1,10 +1,21 @@
 # scp-speedtest
 
+[![CI](https://github.com/cpiz/scp-speedtest/actions/workflows/ci.yml/badge.svg)](https://github.com/cpiz/scp-speedtest/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/cpiz/scp-speedtest?sort=semver)](https://github.com/cpiz/scp-speedtest/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Shell: Bash](https://img.shields.io/badge/shell-bash-4EAA25.svg)](scp-speedtest.sh)
+
 [English README](README.md)
 
 一个使用 `scp` 做网络双向测速的 Bash 脚本。它会在本地和远端分别生成固定大小的测试文件：本地文件用于上传测速，远端文件用于下载测速，两个方向互不依赖。
 
 默认测试文件大小为 `100M`。认证、密钥、跳板机、SSH config 等能力都交给系统自带的 `ssh/scp` 处理。
+
+## 演示
+
+![scp-speedtest terminal demo](docs/demo.svg)
+
+原始录制文件提供为 asciinema cast：[docs/demo.cast](docs/demo.cast)。
 
 ## 快速开始
 
