@@ -187,8 +187,11 @@ test_partial_transfer_output() {
   local output
   output="$(print_human_result 104857600)"
 
-  assert_contains "$output" "Upload: interrupted, 11534336 / 104857600 bytes, 21.000000 seconds, 0.52 MiB/s" "interrupted upload prints transferred bytes"
-  assert_contains "$output" "Download: completed, 104857600 / 104857600 bytes, 9.500000 seconds, 10.53 MiB/s" "interrupted upload does not affect full download output"
+  assert_contains "$output" "scp-speedtest result" "human result prints a prominent title"
+  assert_contains "$output" "GitHub   : https://github.com/cpiz/scp-speedtest" "human result includes project URL"
+  assert_contains "$output" "Upload   : INTERRUPTED" "interrupted upload prints status"
+  assert_contains "$output" "11.00 / 100.00" "interrupted upload prints transferred MiB"
+  assert_contains "$output" "Download : COMPLETED" "interrupted upload does not affect full download output"
 }
 
 test_timeout_status_detection() {

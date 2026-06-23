@@ -112,10 +112,15 @@ scp-speedtest-100M.bin                     100%  100MB  14.2MB/s   00:07
 [13:20:16] Download completed: 104857600 bytes, 7.041432 seconds, 14.20 MiB/s
 [13:20:16] Verifying downloaded file checksum
 [13:20:16] Checksum verification passed
-Target: my-vps
-Test file: scp-speedtest-100M.bin (104857600 bytes)
-Upload: completed, 104857600 / 104857600 bytes, 6.746740 seconds, 14.82 MiB/s
-Download: completed, 104857600 / 104857600 bytes, 7.041432 seconds, 14.20 MiB/s
+======================================================================
+scp-speedtest result
+GitHub   : https://github.com/cpiz/scp-speedtest
+Target   : my-vps
+Test file: scp-speedtest-100M.bin (100.00 MiB / 104857600 bytes)
+----------------------------------------------------------------------
+Upload   : COMPLETED       100.00 / 100.00    MiB    6.746740 s     14.82 MiB/s
+Download : COMPLETED       100.00 / 100.00    MiB    7.041432 s     14.20 MiB/s
+======================================================================
 ```
 
 JSON 输出：

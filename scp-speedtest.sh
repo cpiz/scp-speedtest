@@ -12,6 +12,7 @@ set -euo pipefail
 
 VERSION="0.1.0"
 DEFAULT_SIZE="100M"
+PROJECT_URL="https://github.com/cpiz/scp-speedtest"
 
 TARGET=""
 HOST=""
@@ -629,13 +630,75 @@ status_label() {
   esac
 }
 
+supports_style() {
+  [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-}" != "dumb" ]]
+}
+
+style_text() {
+  local code="$1"
+  local text="$2"
+  if supports_style; then
+    printf '\033[%sm%s\033[0m' "$code" "$text"
+  else
+    printf '%s' "$text"
+  fi
+}
+
+status_badge() {
+  local status="$1"
+  local label
+  label="$(printf '%s' "$(status_label "$status")" | tr '[:lower:]' '[:upper:]')"
+  case "$status" in
+    completed) style_text "1;32" "$label" ;;
+    interrupted) style_text "1;33" "$label" ;;
+    timeout) style_text "1;31" "$label" ;;
+    *) style_text "1" "$label" ;;
+  esac
+}
+
+format_mib() {
+  local bytes="$1"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$bytes" <<'PY'
+import sys
+print(f"{int(sys.argv[1]) / 1024 / 1024:.2f}")
+PY
+  else
+    awk -v bytes="$bytes" 'BEGIN { printf "%.2f", bytes / 1024 / 1024 }'
+  fi
+}
+
+print_result_rule() {
+  printf '%s\n' '======================================================================'
+}
+
+print_transfer_line() {
+  local label="$1"
+  local status="$2"
+  local transferred_bytes="$3"
+  local total_bytes="$4"
+  local seconds="$5"
+  local mibps="$6"
+  local transferred_mib total_mib
+  transferred_mib="$(format_mib "$transferred_bytes")"
+  total_mib="$(format_mib "$total_bytes")"
+
+  printf '%-9s: %-12s %9s / %-9s MiB  %10s s  %8s MiB/s\n' \
+    "$label" "$(status_badge "$status")" "$transferred_mib" "$total_mib" "$seconds" "$mibps"
+}
+
 print_human_result() {
   local bytes="$1"
 
-  printf 'Target: %s\n' "$REMOTE_SPEC"
-  printf 'Test file: %s (%s bytes)\n' "$TEST_FILE_NAME" "$bytes"
-  printf 'Upload: %s, %s / %s bytes, %s seconds, %s MiB/s\n' "$(status_label "$UPLOAD_STATUS")" "$UPLOAD_BYTES" "$bytes" "$UPLOAD_SECONDS" "$UPLOAD_MIBPS"
-  printf 'Download: %s, %s / %s bytes, %s seconds, %s MiB/s\n' "$(status_label "$DOWNLOAD_STATUS")" "$DOWNLOAD_BYTES" "$bytes" "$DOWNLOAD_SECONDS" "$DOWNLOAD_MIBPS"
+  print_result_rule
+  printf '%s\n' "$(style_text "1" "scp-speedtest result")"
+  printf 'GitHub   : %s\n' "$PROJECT_URL"
+  printf 'Target   : %s\n' "$REMOTE_SPEC"
+  printf 'Test file: %s (%s MiB / %s bytes)\n' "$TEST_FILE_NAME" "$(format_mib "$bytes")" "$bytes"
+  printf '%s\n' '----------------------------------------------------------------------'
+  print_transfer_line "Upload" "$UPLOAD_STATUS" "$UPLOAD_BYTES" "$bytes" "$UPLOAD_SECONDS" "$UPLOAD_MIBPS"
+  print_transfer_line "Download" "$DOWNLOAD_STATUS" "$DOWNLOAD_BYTES" "$bytes" "$DOWNLOAD_SECONDS" "$DOWNLOAD_MIBPS"
+  print_result_rule
 }
 
 print_human_summary() {
@@ -664,9 +727,16 @@ print_human_summary() {
   upload_avg="$(calc_average_completed_mibps "$upload_completed" "$bytes" "$upload_total_seconds")"
   download_avg="$(calc_average_completed_mibps "$download_completed" "$bytes" "$download_total_seconds")"
 
-  printf 'Summary:\n'
-  printf 'Upload average: %s MiB/s (%s/%s completed rounds)\n' "$upload_avg" "$upload_completed" "$ROUNDS"
+  print_result_rule
+  printf '%s\n' "$(style_text "1" "scp-speedtest summary")"
+  printf 'GitHub          : %s\n' "$PROJECT_URL"
+  printf 'Target          : %s\n' "$REMOTE_SPEC"
+  printf 'Rounds          : %s\n' "$ROUNDS"
+  printf 'Test file       : %s (%s MiB / %s bytes)\n' "$TEST_FILE_NAME" "$(format_mib "$bytes")" "$bytes"
+  printf '%s\n' '----------------------------------------------------------------------'
+  printf 'Upload average  : %s MiB/s (%s/%s completed rounds)\n' "$upload_avg" "$upload_completed" "$ROUNDS"
   printf 'Download average: %s MiB/s (%s/%s completed rounds)\n' "$download_avg" "$download_completed" "$ROUNDS"
+  print_result_rule
 }
 
 print_json_result() {
@@ -920,12 +990,12 @@ run_speedtest_rounds() {
     reset_round_state
     run_speedtest "$bytes"
     collect_round_result
+    cleanup
 
     if ((JSON_OUTPUT == 0)); then
       print_round_human_result "$bytes"
     fi
 
-    cleanup
     reset_round_state
   done
 
