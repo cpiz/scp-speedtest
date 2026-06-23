@@ -1,0 +1,15 @@
+.DS_Store
+*.swp
+*.swo
+*.tmp
+*.log
+
+# Test/runtime scratch space
+.tmp/
+tmp/
+coverage/
+
+# Packaging outputs
+dist/
+*.tar.gz
+*.zip

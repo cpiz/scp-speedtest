@@ -1,0 +1,748 @@
+#!/usr/bin/env bash
+if [ -z "${BASH_VERSION:-}" ]; then
+  printf 'Error: this script requires bash. Run it with: bash %s\n' "$0" >&2
+  exit 2
+fi
+if shopt -oq posix; then
+  printf 'Error: this script requires bash mode. Run it with: bash %s\n' "$0" >&2
+  exit 2
+fi
+
+set -euo pipefail
+
+VERSION="0.1.0"
+DEFAULT_SIZE="100M"
+
+TARGET=""
+HOST=""
+USER_NAME=""
+PORT=""
+IDENTITY_FILE=""
+SSH_CONFIG=""
+JUMP_HOST=""
+CONNECT_TIMEOUT=""
+MAX_DURATION=""
+SIZE="$DEFAULT_SIZE"
+SIZE_LABEL="$DEFAULT_SIZE"
+REMOTE_DIR=""
+LEGACY_SCP=0
+JSON_OUTPUT=0
+KEEP_FILES=0
+DRY_RUN=0
+QUIET=0
+POSITIONAL_TARGET=""
+SSH_OPTIONS=()
+SSH_CMD=()
+SCP_CMD=()
+
+LOCAL_TMP_DIR=""
+LOCAL_DOWNLOAD_DIR=""
+REMOTE_TMP_DIR=""
+REMOTE_TMP_CREATED=0
+REMOTE_SPEC=""
+REMOTE_TEST_FILE=""
+TEST_FILE_NAME="scp-speedtest-${DEFAULT_SIZE}.bin"
+TRANSFER_INTERRUPTED=0
+LAST_SCP_STATUS=0
+
+UPLOAD_STATUS="skipped"
+UPLOAD_BYTES=0
+UPLOAD_SECONDS="0.000000"
+UPLOAD_MIBPS="0.00"
+DOWNLOAD_STATUS="skipped"
+DOWNLOAD_BYTES=0
+DOWNLOAD_SECONDS="0.000000"
+DOWNLOAD_MIBPS="0.00"
+STARTED_AT=""
+ENDED_AT=""
+REMOTE_GENERATOR=""
+REMOTE_GENERATOR_STATUS="skipped"
+
+die() {
+  printf 'Error: %s\n' "$*" >&2
+  exit 1
+}
+
+log_event() {
+  ((QUIET == 1)) && return 0
+  printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$*" >&2
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./scp-speedtest.sh [alias-or-host] [options]
+  ./scp-speedtest.sh --target <alias-or-host> [options]
+  ./scp-speedtest.sh --host <host> [--user <user>] [options]
+
+Description:
+  Measure upload and download throughput with scp.
+  Authentication is handled by ssh/scp; this script does not store passwords.
+
+Options:
+  --target <alias-or-host>       SSH config Host alias or hostname; can also be passed as a positional argument
+  --host <host>                  Explicit SSH host or IP
+  --user <user>                  Explicit SSH user
+  --port <port>                  Explicit SSH port
+  --identity-file <path>         SSH private key path
+  --ssh-config <path>            SSH config file path
+  --jump-host <host>             ProxyJump / -J host
+  --connect-timeout <seconds>    SSH/SCP connection timeout in seconds
+  --max-duration <seconds>       Per-transfer timeout for upload and download
+  --ssh-option <Key=Value>       Extra ssh/scp -o option; can be repeated
+  --size <100M|1G>               Test file size, default 100M
+  --remote-dir <path>            Remote test directory, defaults to remote mktemp -d
+  --legacy-scp                   Enable legacy scp protocol with scp -O
+  --json                         Print machine-readable JSON to stdout
+  --keep                         Keep temporary files for troubleshooting
+  --quiet                        Hide progress events and run scp in quiet mode
+  --dry-run                      Show resolved commands without running the test
+  -h, --help                     Show help
+  --version                      Show version
+
+Examples:
+  ./scp-speedtest.sh my-vps
+  ./scp-speedtest.sh --target my-vps
+  ./scp-speedtest.sh --host 1.2.3.4 --user root --port 2222 --identity-file ~/.ssh/id_ed25519
+  ./scp-speedtest.sh my-vps --size 1G --json
+EOF
+}
+
+require_value() {
+  local option="$1"
+  local value="${2:-}"
+  [[ -n "$value" ]] || die "$option requires a value"
+}
+
+parse_args() {
+  while (($#)); do
+    case "$1" in
+      --target)
+        require_value "$1" "${2:-}"
+        TARGET="$2"
+        shift 2
+        ;;
+      --host)
+        require_value "$1" "${2:-}"
+        HOST="$2"
+        shift 2
+        ;;
+      --user)
+        require_value "$1" "${2:-}"
+        USER_NAME="$2"
+        shift 2
+        ;;
+      --port)
+        require_value "$1" "${2:-}"
+        PORT="$2"
+        shift 2
+        ;;
+      --identity-file)
+        require_value "$1" "${2:-}"
+        IDENTITY_FILE="$2"
+        shift 2
+        ;;
+      --ssh-config)
+        require_value "$1" "${2:-}"
+        SSH_CONFIG="$2"
+        shift 2
+        ;;
+      --jump-host)
+        require_value "$1" "${2:-}"
+        JUMP_HOST="$2"
+        shift 2
+        ;;
+      --connect-timeout)
+        require_value "$1" "${2:-}"
+        CONNECT_TIMEOUT="$2"
+        shift 2
+        ;;
+      --max-duration)
+        require_value "$1" "${2:-}"
+        MAX_DURATION="$2"
+        shift 2
+        ;;
+      --ssh-option)
+        require_value "$1" "${2:-}"
+        SSH_OPTIONS+=("$2")
+        shift 2
+        ;;
+      --size)
+        require_value "$1" "${2:-}"
+        SIZE="$2"
+        shift 2
+        ;;
+      --remote-dir)
+        require_value "$1" "${2:-}"
+        REMOTE_DIR="$2"
+        shift 2
+        ;;
+      --legacy-scp)
+        LEGACY_SCP=1
+        shift
+        ;;
+      --json)
+        JSON_OUTPUT=1
+        shift
+        ;;
+      --keep)
+        KEEP_FILES=1
+        shift
+        ;;
+      --quiet)
+        QUIET=1
+        shift
+        ;;
+      --dry-run)
+        DRY_RUN=1
+        shift
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      --version)
+        printf '%s\n' "$VERSION"
+        exit 0
+        ;;
+      --)
+        shift
+        while (($#)); do
+          set_position_target "$1"
+          shift
+        done
+        ;;
+      -*)
+        die "unknown option: $1"
+        ;;
+      *)
+        set_position_target "$1"
+        shift
+        ;;
+    esac
+  done
+}
+
+set_position_target() {
+  local value="$1"
+  [[ -n "$value" ]] || die "positional alias-or-host cannot be empty"
+  [[ -z "$POSITIONAL_TARGET" ]] || die "only one positional alias-or-host is allowed"
+  POSITIONAL_TARGET="$value"
+}
+
+validate_args() {
+  [[ -z "$TARGET" || -z "$POSITIONAL_TARGET" ]] || die "positional alias-or-host and --target cannot be used together"
+  [[ -n "$HOST" || -n "$TARGET" || -n "$POSITIONAL_TARGET" ]] || die "provide alias-or-host, --target, or --host"
+
+  if [[ -n "$PORT" && ! "$PORT" =~ ^[0-9]+$ ]]; then
+    die "--port must be numeric"
+  fi
+  if [[ -n "$CONNECT_TIMEOUT" && ! "$CONNECT_TIMEOUT" =~ ^[0-9]+$ ]]; then
+    die "--connect-timeout must be numeric"
+  fi
+  if [[ -n "$MAX_DURATION" && ! "$MAX_DURATION" =~ ^[0-9]+$ ]]; then
+    die "--max-duration must be numeric"
+  fi
+  if [[ -n "$MAX_DURATION" ]] && ! command -v perl >/dev/null 2>&1 && ! command -v timeout >/dev/null 2>&1; then
+    die "--max-duration requires perl or timeout"
+  fi
+
+  parse_size_to_bytes "$SIZE" >/dev/null
+  SIZE_LABEL="$(normalize_size_label "$SIZE")"
+  SIZE="$SIZE_LABEL"
+  update_test_file_name
+  build_remote_spec
+}
+
+build_remote_spec() {
+  local host_part="$HOST"
+  if [[ -z "$host_part" ]]; then
+    host_part="${TARGET:-$POSITIONAL_TARGET}"
+  fi
+
+  [[ -n "$host_part" ]] || die "failed to determine remote host"
+
+  if [[ -n "$USER_NAME" && "$host_part" != *@* ]]; then
+    REMOTE_SPEC="${USER_NAME}@${host_part}"
+  else
+    REMOTE_SPEC="$host_part"
+  fi
+}
+
+parse_size_to_bytes() {
+  local raw="$1"
+  local upper number suffix
+  upper="$(printf '%s' "$raw" | tr '[:lower:]' '[:upper:]')"
+  if [[ "$upper" =~ ^([0-9]+)([KMG]?)(B?)$ ]]; then
+    number="${BASH_REMATCH[1]}"
+    suffix="${BASH_REMATCH[2]}"
+    case "$suffix" in
+      K) printf '%s\n' $((number * 1024)) ;;
+      M) printf '%s\n' $((number * 1024 * 1024)) ;;
+      G) printf '%s\n' $((number * 1024 * 1024 * 1024)) ;;
+      "") printf '%s\n' "$number" ;;
+      *) die "unsupported size unit: ${raw}" ;;
+    esac
+  else
+    die "invalid --size value: ${raw}. Examples: 100M, 1G, 1048576"
+  fi
+}
+
+normalize_size_label() {
+  local raw="$1"
+  local upper number suffix
+  upper="$(printf '%s' "$raw" | tr '[:lower:]' '[:upper:]')"
+  if [[ "$upper" =~ ^([0-9]+)([KMG]?)(B?)$ ]]; then
+    number="${BASH_REMATCH[1]}"
+    suffix="${BASH_REMATCH[2]}"
+    printf '%s%s\n' "$number" "$suffix"
+  else
+    die "invalid --size value: ${raw}. Examples: 100M, 1G, 1048576"
+  fi
+}
+
+update_test_file_name() {
+  TEST_FILE_NAME="scp-speedtest-${SIZE_LABEL}.bin"
+}
+
+json_escape() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\n'/\\n}"
+  value="${value//$'\r'/\\r}"
+  value="${value//$'\t'/\\t}"
+  printf '%s' "$value"
+}
+
+shell_quote() {
+  local value="$1"
+  printf "'%s'" "${value//\'/\'\\\'\'}"
+}
+
+format_remote_scp_path() {
+  local path="$1"
+  if ((LEGACY_SCP == 1)); then
+    printf '%s:%s' "$REMOTE_SPEC" "$(shell_quote "$path")"
+  else
+    printf '%s:%s' "$REMOTE_SPEC" "$path"
+  fi
+}
+
+make_local_tmp_dir() {
+  local tmp_base="${TMPDIR:-/tmp}"
+  tmp_base="${tmp_base%/}"
+  mktemp -d "${tmp_base}/scp-speedtest.local.XXXXXX"
+}
+
+get_local_file_size() {
+  local file="$1"
+  if [[ -f "$file" ]]; then
+    wc -c <"$file" | tr -d '[:space:]'
+  else
+    printf '0\n'
+  fi
+}
+
+get_remote_file_size() {
+  local file="$1"
+  local output status quoted_file
+  quoted_file="$(shell_quote "$file")"
+  build_ssh_cmd
+
+  set +e
+  output="$("${SSH_CMD[@]}" "$REMOTE_SPEC" "if [ -f ${quoted_file} ]; then wc -c < ${quoted_file}; else printf '0\n'; fi" 2>/dev/null)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 && "$output" =~ ^[0-9]+$ ]]; then
+    printf '%s\n' "$output"
+  else
+    printf '0\n'
+  fi
+}
+
+run_scp_interruptible() {
+  TRANSFER_INTERRUPTED=0
+  LAST_SCP_STATUS=0
+  trap 'TRANSFER_INTERRUPTED=1' INT
+
+  set +e
+  if [[ -n "$MAX_DURATION" ]] && command -v perl >/dev/null 2>&1; then
+    perl -e 'alarm shift; exec @ARGV' "$MAX_DURATION" "$@"
+  elif [[ -n "$MAX_DURATION" ]] && command -v timeout >/dev/null 2>&1; then
+    timeout "$MAX_DURATION" "$@"
+  else
+    "$@"
+  fi
+  LAST_SCP_STATUS=$?
+  set -e
+
+  trap - INT
+  return 0
+}
+
+is_timeout_status() {
+  [[ "$1" -eq 124 || "$1" -eq 142 ]]
+}
+
+now_seconds() {
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - <<'PY'
+import time
+print(f"{time.time():.6f}")
+PY
+  elif command -v perl >/dev/null 2>&1; then
+    perl -MTime::HiRes=time -e 'printf "%.6f\n", time'
+  else
+    date +%s
+  fi
+}
+
+calc_duration() {
+  local start="$1"
+  local end="$2"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$start" "$end" <<'PY'
+import sys
+start = float(sys.argv[1])
+end = float(sys.argv[2])
+print(f"{max(end - start, 0.000001):.6f}")
+PY
+  elif command -v perl >/dev/null 2>&1; then
+    perl -e 'printf "%.6f\n", ($ARGV[1] - $ARGV[0]) > 0 ? ($ARGV[1] - $ARGV[0]) : 0.000001' "$start" "$end"
+  else
+    local diff=$((end - start))
+    ((diff > 0)) || diff=1
+    printf '%s\n' "$diff"
+  fi
+}
+
+calc_mibps() {
+  local bytes="$1"
+  local seconds="$2"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$bytes" "$seconds" <<'PY'
+import sys
+bytes_count = int(sys.argv[1])
+seconds = float(sys.argv[2])
+print(f"{bytes_count / 1024 / 1024 / seconds:.2f}")
+PY
+  else
+    awk -v bytes="$bytes" -v seconds="$seconds" 'BEGIN { printf "%.2f", bytes / 1024 / 1024 / seconds }'
+  fi
+}
+
+build_ssh_cmd() {
+  SSH_CMD=(ssh)
+  [[ -z "$SSH_CONFIG" ]] || SSH_CMD+=(-F "$SSH_CONFIG")
+  [[ -z "$PORT" ]] || SSH_CMD+=(-p "$PORT")
+  [[ -z "$IDENTITY_FILE" ]] || SSH_CMD+=(-i "$IDENTITY_FILE")
+  [[ -z "$JUMP_HOST" ]] || SSH_CMD+=(-J "$JUMP_HOST")
+  [[ -z "$CONNECT_TIMEOUT" ]] || SSH_CMD+=(-o "ConnectTimeout=${CONNECT_TIMEOUT}")
+  local opt
+  for opt in "${SSH_OPTIONS[@]+"${SSH_OPTIONS[@]}"}"; do
+    SSH_CMD+=(-o "$opt")
+  done
+}
+
+build_scp_cmd() {
+  SCP_CMD=(scp)
+  ((QUIET == 0)) || SCP_CMD+=(-q)
+  ((LEGACY_SCP == 0)) || SCP_CMD+=(-O)
+  [[ -z "$SSH_CONFIG" ]] || SCP_CMD+=(-F "$SSH_CONFIG")
+  [[ -z "$PORT" ]] || SCP_CMD+=(-P "$PORT")
+  [[ -z "$IDENTITY_FILE" ]] || SCP_CMD+=(-i "$IDENTITY_FILE")
+  [[ -z "$JUMP_HOST" ]] || SCP_CMD+=(-J "$JUMP_HOST")
+  [[ -z "$CONNECT_TIMEOUT" ]] || SCP_CMD+=(-o "ConnectTimeout=${CONNECT_TIMEOUT}")
+  local opt
+  for opt in "${SSH_OPTIONS[@]+"${SSH_OPTIONS[@]}"}"; do
+    SCP_CMD+=(-o "$opt")
+  done
+}
+
+command_to_string() {
+  local -a parts=("$@")
+  local item
+  local out=""
+  for item in "${parts[@]}"; do
+    if [[ -z "$out" ]]; then
+      printf -v out '%q' "$item"
+    else
+      printf -v out '%s %q' "$out" "$item"
+    fi
+  done
+  printf '%s' "$out"
+}
+
+checksum_file() {
+  local file="$1"
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$file" | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{print $1}'
+  else
+    die "shasum or sha256sum is required to verify the downloaded file"
+  fi
+}
+
+generate_test_file() {
+  local file="$1"
+  local bytes="$2"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$file" "$bytes" <<'PY'
+import os
+import sys
+path = sys.argv[1]
+size = int(sys.argv[2])
+with open(path, "wb") as f:
+    f.truncate(size)
+PY
+  else
+    dd if=/dev/zero of="$file" bs=1048576 count=$((bytes / 1048576)) status=none
+    local remainder=$((bytes % 1048576))
+    if ((remainder > 0)); then
+      dd if=/dev/zero bs="$remainder" count=1 status=none >>"$file"
+    fi
+  fi
+}
+
+generate_remote_test_file() {
+  local file="$1"
+  local bytes="$2"
+  local quoted_file mb remainder remote_script
+  quoted_file="$(shell_quote "$file")"
+  mb=$((bytes / 1048576))
+  remainder=$((bytes % 1048576))
+  build_ssh_cmd
+
+  remote_script="if command -v truncate >/dev/null 2>&1; then truncate -s ${bytes} ${quoted_file} && printf 'truncate\n'; else dd if=/dev/zero of=${quoted_file} bs=1048576 count=${mb} >/dev/null 2>&1; if [ ${remainder} -gt 0 ]; then dd if=/dev/zero bs=${remainder} count=1 >> ${quoted_file} 2>/dev/null; fi; printf 'dd\n'; fi"
+  REMOTE_GENERATOR="$("${SSH_CMD[@]}" "$REMOTE_SPEC" "$remote_script")"
+  REMOTE_GENERATOR_STATUS="completed"
+}
+
+prepare_remote_dir() {
+  build_ssh_cmd
+
+  if [[ -n "$REMOTE_DIR" ]]; then
+    log_event "Connecting and preparing remote directory: ${REMOTE_SPEC}:${REMOTE_DIR}"
+    "${SSH_CMD[@]}" "$REMOTE_SPEC" "mkdir -p -- $(shell_quote "$REMOTE_DIR")"
+    REMOTE_TMP_DIR="$REMOTE_DIR"
+    REMOTE_TMP_CREATED=0
+    log_event "Remote directory ready: ${REMOTE_DIR}"
+  else
+    log_event "Connecting and creating remote temporary directory: ${REMOTE_SPEC}"
+    # shellcheck disable=SC2016
+    REMOTE_TMP_DIR="$("${SSH_CMD[@]}" "$REMOTE_SPEC" 'tmp_base="${TMPDIR:-/tmp}"; tmp_base="${tmp_base%/}"; mktemp -d "${tmp_base}/scp-speedtest.XXXXXX"')"
+    [[ -n "$REMOTE_TMP_DIR" ]] || die "failed to create remote temporary directory"
+    REMOTE_TMP_CREATED=1
+    log_event "Remote temporary directory created: ${REMOTE_TMP_DIR}"
+  fi
+}
+
+cleanup() {
+  local exit_code=$?
+  if ((KEEP_FILES == 0)); then
+    if [[ -n "$LOCAL_TMP_DIR" && -d "$LOCAL_TMP_DIR" ]]; then
+      log_event "Cleaning local temporary directory: ${LOCAL_TMP_DIR}"
+      rm -rf "$LOCAL_TMP_DIR"
+    fi
+    if [[ -n "$REMOTE_SPEC" && -n "$REMOTE_TEST_FILE" ]]; then
+      log_event "Cleaning remote test file: ${REMOTE_SPEC}:${REMOTE_TEST_FILE}"
+      build_ssh_cmd
+      "${SSH_CMD[@]}" "$REMOTE_SPEC" "rm -f -- $(shell_quote "$REMOTE_TEST_FILE")" >/dev/null 2>&1 || true
+    fi
+    if [[ -n "$REMOTE_SPEC" && -n "$REMOTE_TMP_DIR" && $REMOTE_TMP_CREATED -eq 1 ]]; then
+      log_event "Cleaning remote temporary directory: ${REMOTE_SPEC}:${REMOTE_TMP_DIR}"
+      build_ssh_cmd
+      "${SSH_CMD[@]}" "$REMOTE_SPEC" "rm -rf -- $(shell_quote "$REMOTE_TMP_DIR")" >/dev/null 2>&1 || true
+    fi
+  else
+    [[ -z "$LOCAL_TMP_DIR" ]] || printf 'Kept local temporary directory: %s\n' "$LOCAL_TMP_DIR" >&2
+    [[ -z "$REMOTE_TMP_DIR" ]] || printf 'Kept remote temporary directory: %s\n' "$REMOTE_TMP_DIR" >&2
+  fi
+  return "$exit_code"
+}
+
+status_label() {
+  case "$1" in
+    completed) printf 'completed' ;;
+    interrupted) printf 'interrupted' ;;
+    timeout) printf 'timeout' ;;
+    partial) printf 'completed (partial file)' ;;
+    skipped) printf 'skipped' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+print_human_result() {
+  local bytes="$1"
+
+  printf 'Target: %s\n' "$REMOTE_SPEC"
+  printf 'Test file: %s (%s bytes)\n' "$TEST_FILE_NAME" "$bytes"
+  printf 'Upload: %s, %s / %s bytes, %s seconds, %s MiB/s\n' "$(status_label "$UPLOAD_STATUS")" "$UPLOAD_BYTES" "$bytes" "$UPLOAD_SECONDS" "$UPLOAD_MIBPS"
+  printf 'Download: %s, %s / %s bytes, %s seconds, %s MiB/s\n' "$(status_label "$DOWNLOAD_STATUS")" "$DOWNLOAD_BYTES" "$bytes" "$DOWNLOAD_SECONDS" "$DOWNLOAD_MIBPS"
+}
+
+print_json_result() {
+  local bytes="$1"
+
+  printf '{'
+  printf '"ok":%s,' "$([[ "$DOWNLOAD_STATUS" == "completed" ]] && printf true || printf false)"
+  printf '"version":"%s",' "$(json_escape "$VERSION")"
+  printf '"target":"%s",' "$(json_escape "$REMOTE_SPEC")"
+  printf '"size":"%s",' "$(json_escape "$SIZE")"
+  printf '"test_file":"%s",' "$(json_escape "$TEST_FILE_NAME")"
+  printf '"bytes":%s,' "$bytes"
+  printf '"started_at":"%s",' "$(json_escape "$STARTED_AT")"
+  printf '"ended_at":"%s",' "$(json_escape "$ENDED_AT")"
+  printf '"remote_dir":"%s",' "$(json_escape "$REMOTE_TMP_DIR")"
+  printf '"remote_generator":{"status":"%s","method":"%s"},' "$(json_escape "$REMOTE_GENERATOR_STATUS")" "$(json_escape "$REMOTE_GENERATOR")"
+  printf '"upload":{"status":"%s","bytes":%s,"seconds":%s,"mib_per_second":%s},' "$(json_escape "$UPLOAD_STATUS")" "$UPLOAD_BYTES" "$UPLOAD_SECONDS" "$UPLOAD_MIBPS"
+  printf '"download":{"status":"%s","bytes":%s,"seconds":%s,"mib_per_second":%s}' "$(json_escape "$DOWNLOAD_STATUS")" "$DOWNLOAD_BYTES" "$DOWNLOAD_SECONDS" "$DOWNLOAD_MIBPS"
+  printf '}\n'
+}
+
+print_dry_run() {
+  local bytes="$1"
+  build_ssh_cmd
+  build_scp_cmd
+
+  if ((JSON_OUTPUT == 1)); then
+    printf '{'
+    printf '"target":"%s",' "$(json_escape "$REMOTE_SPEC")"
+    printf '"size":"%s",' "$(json_escape "$SIZE")"
+    printf '"test_file":"%s",' "$(json_escape "$TEST_FILE_NAME")"
+    printf '"bytes":%s,' "$bytes"
+    printf '"ssh_command":"%s",' "$(json_escape "$(command_to_string "${SSH_CMD[@]}" "$REMOTE_SPEC")")"
+    printf '"scp_command":"%s"' "$(json_escape "$(command_to_string "${SCP_CMD[@]}")")"
+    printf '}\n'
+  else
+    printf 'Target: %s\n' "$REMOTE_SPEC"
+    printf 'Test file: %s (%s bytes)\n' "$TEST_FILE_NAME" "$bytes"
+    printf 'SSH command: %s\n' "$(command_to_string "${SSH_CMD[@]}" "$REMOTE_SPEC")"
+    printf 'SCP command: %s\n' "$(command_to_string "${SCP_CMD[@]}")"
+  fi
+}
+
+run_speedtest() {
+  local bytes="$1"
+  local local_file download_file
+  local upload_start upload_end
+  local download_start download_end
+  local source_hash download_hash
+
+  STARTED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  LOCAL_TMP_DIR="$(make_local_tmp_dir)"
+  local_file="${LOCAL_TMP_DIR}/${TEST_FILE_NAME}"
+  LOCAL_DOWNLOAD_DIR="${LOCAL_TMP_DIR}/download"
+  mkdir -p "$LOCAL_DOWNLOAD_DIR"
+  download_file="${LOCAL_DOWNLOAD_DIR}/${TEST_FILE_NAME}"
+
+  log_event "Target: ${REMOTE_SPEC}"
+  log_event "Creating local test file: ${local_file} (${SIZE} / ${bytes} bytes)"
+  generate_test_file "$local_file" "$bytes"
+  log_event "Local test file created; calculating source checksum"
+  source_hash="$(checksum_file "$local_file")"
+
+  prepare_remote_dir
+  REMOTE_TEST_FILE="${REMOTE_TMP_DIR}/${TEST_FILE_NAME}"
+
+  build_scp_cmd
+
+  log_event "Starting upload: ${local_file} -> $(format_remote_scp_path "$REMOTE_TEST_FILE")"
+  upload_start="$(now_seconds)"
+  run_scp_interruptible "${SCP_CMD[@]}" "$local_file" "$(format_remote_scp_path "$REMOTE_TEST_FILE")"
+  upload_end="$(now_seconds)"
+  UPLOAD_SECONDS="$(calc_duration "$upload_start" "$upload_end")"
+
+  if [[ "$LAST_SCP_STATUS" -eq 0 ]]; then
+    UPLOAD_STATUS="completed"
+    UPLOAD_BYTES="$bytes"
+  elif [[ "$TRANSFER_INTERRUPTED" -eq 1 || "$LAST_SCP_STATUS" -eq 130 ]]; then
+    UPLOAD_STATUS="interrupted"
+    UPLOAD_BYTES="$(get_remote_file_size "$REMOTE_TEST_FILE")"
+    log_event "Upload interrupted; recorded remote file size: ${UPLOAD_BYTES} bytes"
+  elif [[ -n "$MAX_DURATION" ]] && is_timeout_status "$LAST_SCP_STATUS"; then
+    UPLOAD_STATUS="timeout"
+    UPLOAD_BYTES="$(get_remote_file_size "$REMOTE_TEST_FILE")"
+    log_event "Upload timed out; recorded remote file size: ${UPLOAD_BYTES} bytes"
+  else
+    die "upload failed with scp exit code: ${LAST_SCP_STATUS}"
+  fi
+
+  UPLOAD_MIBPS="$(calc_mibps "$UPLOAD_BYTES" "$UPLOAD_SECONDS")"
+  log_event "Upload $(status_label "$UPLOAD_STATUS"): ${UPLOAD_BYTES} bytes, ${UPLOAD_SECONDS} seconds, ${UPLOAD_MIBPS} MiB/s"
+
+  log_event "Preparing remote download test file: ${REMOTE_SPEC}:${REMOTE_TEST_FILE} (${SIZE} / ${bytes} bytes)"
+  build_ssh_cmd
+  "${SSH_CMD[@]}" "$REMOTE_SPEC" "rm -f -- $(shell_quote "$REMOTE_TEST_FILE")"
+  generate_remote_test_file "$REMOTE_TEST_FILE" "$bytes"
+  log_event "Remote download test file ready (method: ${REMOTE_GENERATOR})"
+
+  log_event "Starting download: $(format_remote_scp_path "$REMOTE_TEST_FILE") -> ${download_file}"
+  download_start="$(now_seconds)"
+  run_scp_interruptible "${SCP_CMD[@]}" "$(format_remote_scp_path "$REMOTE_TEST_FILE")" "$download_file"
+  download_end="$(now_seconds)"
+  DOWNLOAD_SECONDS="$(calc_duration "$download_start" "$download_end")"
+
+  if [[ "$LAST_SCP_STATUS" -eq 0 ]]; then
+    DOWNLOAD_STATUS="completed"
+    DOWNLOAD_BYTES="$(get_local_file_size "$download_file")"
+  elif [[ "$TRANSFER_INTERRUPTED" -eq 1 || "$LAST_SCP_STATUS" -eq 130 ]]; then
+    DOWNLOAD_STATUS="interrupted"
+    DOWNLOAD_BYTES="$(get_local_file_size "$download_file")"
+    log_event "Download interrupted; recorded local file size: ${DOWNLOAD_BYTES} bytes"
+  elif [[ -n "$MAX_DURATION" ]] && is_timeout_status "$LAST_SCP_STATUS"; then
+    DOWNLOAD_STATUS="timeout"
+    DOWNLOAD_BYTES="$(get_local_file_size "$download_file")"
+    log_event "Download timed out; recorded local file size: ${DOWNLOAD_BYTES} bytes"
+  else
+    die "download failed with scp exit code: ${LAST_SCP_STATUS}"
+  fi
+
+  DOWNLOAD_MIBPS="$(calc_mibps "$DOWNLOAD_BYTES" "$DOWNLOAD_SECONDS")"
+  log_event "Download $(status_label "$DOWNLOAD_STATUS"): ${DOWNLOAD_BYTES} bytes, ${DOWNLOAD_SECONDS} seconds, ${DOWNLOAD_MIBPS} MiB/s"
+
+  if [[ "$DOWNLOAD_STATUS" == "completed" && "$DOWNLOAD_BYTES" -eq "$bytes" ]]; then
+    log_event "Verifying downloaded file checksum"
+    download_hash="$(checksum_file "$download_file")"
+    [[ "$source_hash" == "$download_hash" ]] || die "downloaded file checksum verification failed"
+    log_event "Checksum verification passed"
+  else
+    log_event "Skipping checksum verification because transfer was interrupted or partial"
+  fi
+
+  ENDED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+  if ((JSON_OUTPUT == 1)); then
+    print_json_result "$bytes"
+  else
+    print_human_result "$bytes"
+  fi
+}
+
+main() {
+  if (($# == 0)); then
+    usage
+    return 0
+  fi
+
+  parse_args "$@"
+  validate_args
+
+  local bytes
+  bytes="$(parse_size_to_bytes "$SIZE")"
+
+  if ((DRY_RUN == 1)); then
+    print_dry_run "$bytes"
+    return 0
+  fi
+
+  trap cleanup EXIT
+  run_speedtest "$bytes"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

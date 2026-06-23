@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install shell tooling
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck shfmt
+
+      - name: Install shell tooling
+        if: runner.os == 'macOS'
+        run: |
+          brew install shellcheck shfmt
+
+      - name: Syntax check
+        run: |
+          bash -n scp-speedtest.sh
+          bash -n tests/run_tests.sh
+
+      - name: Unit tests
+        run: tests/run_tests.sh
+
+      - name: ShellCheck
+        run: shellcheck scp-speedtest.sh tests/run_tests.sh
+
+      - name: Format check
+        run: shfmt -d -i 2 -ci scp-speedtest.sh tests/run_tests.sh
