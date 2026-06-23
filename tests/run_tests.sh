@@ -59,6 +59,7 @@ test_no_arguments_prints_help() {
   assert_contains "$output" "Usage:" "no arguments prints usage"
   assert_contains "$output" "Options:" "no arguments prints options"
   assert_contains "$output" "Examples:" "no arguments prints examples"
+  assert_contains "$output" "GitHub: https://github.com/cpiz/scp-speedtest" "no arguments prints project URL"
 }
 
 test_default_size_and_positional_target() {

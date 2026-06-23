@@ -94,6 +94,7 @@ Usage:
 Description:
   Measure upload and download throughput with scp.
   Authentication is handled by ssh/scp; this script does not store passwords.
+  GitHub: https://github.com/cpiz/scp-speedtest
 
 Options:
   --target <alias-or-host>       SSH config Host alias or hostname; can also be passed as a positional argument
