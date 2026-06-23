@@ -21,6 +21,14 @@ chmod +x scp-speedtest.sh
 
 其中 `my-vps` 可以是 `~/.ssh/config` 里的 Host alias，也可以是普通主机名。
 
+临时试用时，也可以直接从 GitHub 拉取并执行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/main/scp-speedtest.sh | bash -s -- my-vps
+```
+
+长期使用建议先下载脚本并审阅内容，再执行。
+
 等价的显式写法：
 
 ```bash
