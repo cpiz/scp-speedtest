@@ -34,6 +34,21 @@ assert_not_contains() {
   pass "$message"
 }
 
+assert_line_before() {
+  local haystack="$1"
+  local first="$2"
+  local second="$3"
+  local message="$4"
+  local first_line second_line
+  first_line="$(printf '%s\n' "$haystack" | awk -v pattern="$first" 'index($0, pattern) { print NR; exit }')"
+  second_line="$(printf '%s\n' "$haystack" | awk -v pattern="$second" 'index($0, pattern) { print NR; exit }')"
+
+  [[ -n "$first_line" ]] || fail "${message}. Missing first marker: ${first}. Output: ${haystack}"
+  [[ -n "$second_line" ]] || fail "${message}. Missing second marker: ${second}. Output: ${haystack}"
+  [[ "$first_line" -lt "$second_line" ]] || fail "${message}. Expected '${first}' before '${second}'. Output: ${haystack}"
+  pass "$message"
+}
+
 assert_fails_contains() {
   local message="$1"
   local needle="$2"
@@ -58,7 +73,7 @@ test_no_arguments_prints_help() {
 
   [[ "$status" -eq 0 ]] || fail "no arguments should print help and exit 0. Status: ${status}. Output: ${output}"
   assert_contains "$output" "Usage:" "no arguments prints usage"
-  assert_contains "$output" "Version: 1.0.2" "no arguments prints version"
+  assert_contains "$output" "Version: 1.1.0" "no arguments prints version"
   assert_contains "$output" "Options:" "no arguments prints options"
   assert_contains "$output" "Examples:" "no arguments prints examples"
   assert_contains "$output" "GitHub: https://github.com/cpiz/scp-speedtest" "no arguments prints project URL"
@@ -240,6 +255,7 @@ test_partial_transfer_output() {
   assert_contains "$output" "Upload   : INTERRUPTED" "interrupted upload prints status"
   assert_contains "$output" "11.00 / 100.00" "interrupted upload prints transferred MiB"
   assert_contains "$output" "Download : COMPLETED" "interrupted upload does not affect full download output"
+  assert_line_before "$output" "Download :" "Upload   :" "human result prints download before upload"
 }
 
 test_error_result_output() {
@@ -434,6 +450,20 @@ test_fake_ssh_scp_full_flow_json() {
   rm -rf "$fixture_dir"
 }
 
+test_fake_ssh_scp_runs_download_before_upload() {
+  local fixture_dir output
+  fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/scp-speedtest-test.XXXXXX")"
+  make_fake_remote_fixture "$fixture_dir"
+
+  output="$(PATH="${fixture_dir}/bin:$PATH" FAKE_REMOTE_ROOT="${fixture_dir}/remote" bash "$SCRIPT" fake-host --size 1M 2>&1)"
+
+  assert_line_before "$output" "Starting download:" "Starting upload:" "transfer flow runs download before upload"
+  assert_line_before "$output" "Download completed" "Upload completed" "transfer completion logs download before upload"
+  assert_line_before "$output" "Download :" "Upload   :" "final result prints download before upload"
+
+  rm -rf "$fixture_dir"
+}
+
 test_fake_ssh_failure_json() {
   local fixture_dir output status
   fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/scp-speedtest-test.XXXXXX")"
@@ -500,7 +530,7 @@ test_install_script_local_install() {
   installed_version="$("${fixture_dir}/prefix/bin/scp-speedtest" --version)"
 
   assert_contains "$output" "Installed scp-speedtest" "install script reports installed binary"
-  [[ "$installed_version" == "1.0.2" ]] || fail "installed script should print version 1.0.2. Actual: ${installed_version}"
+  [[ "$installed_version" == "1.1.0" ]] || fail "installed script should print version 1.1.0. Actual: ${installed_version}"
   pass "install script installs runnable binary"
 
   rm -rf "$fixture_dir"
@@ -524,6 +554,7 @@ test_partial_transfer_output
 test_error_result_output
 test_timeout_status_detection
 test_fake_ssh_scp_full_flow_json
+test_fake_ssh_scp_runs_download_before_upload
 test_fake_ssh_failure_json
 test_fake_ssh_scp_multi_round_json
 test_invalid_arguments

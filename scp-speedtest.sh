@@ -10,7 +10,7 @@ fi
 
 set -euo pipefail
 
-VERSION="1.0.2"
+VERSION="1.1.0"
 DEFAULT_SIZE="100M"
 PROJECT_URL="https://github.com/cpiz/scp-speedtest"
 
@@ -104,7 +104,7 @@ Usage:
 
 Description:
   Measure upload and download throughput with scp.
-  Version: 1.0.2
+  Version: 1.1.0
   Authentication is handled by ssh/scp; this script does not store passwords.
   GitHub: https://github.com/cpiz/scp-speedtest
 
@@ -779,8 +779,8 @@ print_human_result() {
   printf 'Target   : %s\n' "$REMOTE_SPEC"
   printf 'Test file: %s (%s MiB / %s bytes)\n' "$TEST_FILE_NAME" "$(format_mib "$bytes")" "$bytes"
   printf '%s\n' '----------------------------------------------------------------------'
-  print_transfer_line "Upload" "$UPLOAD_STATUS" "$UPLOAD_BYTES" "$bytes" "$UPLOAD_SECONDS" "$UPLOAD_MIBPS"
   print_transfer_line "Download" "$DOWNLOAD_STATUS" "$DOWNLOAD_BYTES" "$bytes" "$DOWNLOAD_SECONDS" "$DOWNLOAD_MIBPS"
+  print_transfer_line "Upload" "$UPLOAD_STATUS" "$UPLOAD_BYTES" "$bytes" "$UPLOAD_SECONDS" "$UPLOAD_MIBPS"
   print_result_rule
 }
 
@@ -817,8 +817,8 @@ print_human_summary() {
   printf 'Rounds          : %s\n' "$ROUNDS"
   printf 'Test file       : %s (%s MiB / %s bytes)\n' "$TEST_FILE_NAME" "$(format_mib "$bytes")" "$bytes"
   printf '%s\n' '----------------------------------------------------------------------'
-  printf 'Upload average  : %s MiB/s (%s/%s completed rounds)\n' "$upload_avg" "$upload_completed" "$ROUNDS"
   printf 'Download average: %s MiB/s (%s/%s completed rounds)\n' "$download_avg" "$download_completed" "$ROUNDS"
+  printf 'Upload average  : %s MiB/s (%s/%s completed rounds)\n' "$upload_avg" "$upload_completed" "$ROUNDS"
   print_result_rule
 }
 
@@ -1040,30 +1040,6 @@ run_speedtest() {
 
   build_scp_cmd
 
-  log_step "Starting upload: ${local_file} -> $(format_remote_scp_path "$REMOTE_TEST_FILE")"
-  upload_start="$(now_seconds)"
-  run_scp_interruptible "${SCP_CMD[@]}" "$local_file" "$(format_remote_scp_path "$REMOTE_TEST_FILE")"
-  upload_end="$(now_seconds)"
-  UPLOAD_SECONDS="$(calc_duration "$upload_start" "$upload_end")"
-
-  if [[ "$LAST_SCP_STATUS" -eq 0 ]]; then
-    UPLOAD_STATUS="completed"
-    UPLOAD_BYTES="$bytes"
-  elif [[ "$TRANSFER_INTERRUPTED" -eq 1 || "$LAST_SCP_STATUS" -eq 130 ]]; then
-    UPLOAD_STATUS="interrupted"
-    UPLOAD_BYTES="$(get_remote_file_size "$REMOTE_TEST_FILE")"
-    log_event "Upload interrupted; recorded remote file size: ${UPLOAD_BYTES} bytes"
-  elif [[ -n "$MAX_DURATION" ]] && is_timeout_status "$LAST_SCP_STATUS"; then
-    UPLOAD_STATUS="timeout"
-    UPLOAD_BYTES="$(get_remote_file_size "$REMOTE_TEST_FILE")"
-    log_event "Upload timed out; recorded remote file size: ${UPLOAD_BYTES} bytes"
-  else
-    die "upload failed with scp exit code: ${LAST_SCP_STATUS}"
-  fi
-
-  UPLOAD_MIBPS="$(calc_mibps "$UPLOAD_BYTES" "$UPLOAD_SECONDS")"
-  log_event "Upload $(status_label "$UPLOAD_STATUS"): ${UPLOAD_BYTES} bytes, ${UPLOAD_SECONDS} seconds, ${UPLOAD_MIBPS} MiB/s"
-
   log_step "Preparing remote download test file: ${REMOTE_SPEC}:${REMOTE_TEST_FILE} (${SIZE} / ${bytes} bytes)"
   build_ssh_cmd
   "${SSH_CMD[@]}" "$REMOTE_SPEC" "rm -f -- $(shell_quote "$REMOTE_TEST_FILE")"
@@ -1102,6 +1078,30 @@ run_speedtest() {
   else
     log_event "Skipping checksum verification because transfer was interrupted or partial"
   fi
+
+  log_step "Starting upload: ${local_file} -> $(format_remote_scp_path "$REMOTE_TEST_FILE")"
+  upload_start="$(now_seconds)"
+  run_scp_interruptible "${SCP_CMD[@]}" "$local_file" "$(format_remote_scp_path "$REMOTE_TEST_FILE")"
+  upload_end="$(now_seconds)"
+  UPLOAD_SECONDS="$(calc_duration "$upload_start" "$upload_end")"
+
+  if [[ "$LAST_SCP_STATUS" -eq 0 ]]; then
+    UPLOAD_STATUS="completed"
+    UPLOAD_BYTES="$bytes"
+  elif [[ "$TRANSFER_INTERRUPTED" -eq 1 || "$LAST_SCP_STATUS" -eq 130 ]]; then
+    UPLOAD_STATUS="interrupted"
+    UPLOAD_BYTES="$(get_remote_file_size "$REMOTE_TEST_FILE")"
+    log_event "Upload interrupted; recorded remote file size: ${UPLOAD_BYTES} bytes"
+  elif [[ -n "$MAX_DURATION" ]] && is_timeout_status "$LAST_SCP_STATUS"; then
+    UPLOAD_STATUS="timeout"
+    UPLOAD_BYTES="$(get_remote_file_size "$REMOTE_TEST_FILE")"
+    log_event "Upload timed out; recorded remote file size: ${UPLOAD_BYTES} bytes"
+  else
+    die "upload failed with scp exit code: ${LAST_SCP_STATUS}"
+  fi
+
+  UPLOAD_MIBPS="$(calc_mibps "$UPLOAD_BYTES" "$UPLOAD_SECONDS")"
+  log_event "Upload $(status_label "$UPLOAD_STATUS"): ${UPLOAD_BYTES} bytes, ${UPLOAD_SECONDS} seconds, ${UPLOAD_MIBPS} MiB/s"
 
   ENDED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 

@@ -35,7 +35,7 @@ chmod +x scp-speedtest.sh
 临时试用时，也可以直接从 GitHub 拉取并执行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.0.2/scp-speedtest.sh | bash -s -- my-vps
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.1.0/scp-speedtest.sh | bash -s -- my-vps
 ```
 
 长期使用建议先下载脚本并审阅内容，再执行。
@@ -70,13 +70,13 @@ curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.0.2/scp-speed
 一行命令安装：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.0.2/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.1.0/install.sh | bash
 ```
 
 安装到用户可写目录：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.0.2/install.sh | PREFIX="$HOME/.local" bash
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.1.0/install.sh | PREFIX="$HOME/.local" bash
 ```
 
 直接安装到 `/usr/local/bin/scp-speedtest`：
@@ -142,31 +142,31 @@ make dist
 [13:20:01] Local test file created; calculating source checksum
 [13:20:02] Connecting and creating remote temporary directory: my-vps
 [13:20:02] Remote temporary directory created: /tmp/scp-speedtest.xxxxxx
-[13:20:02] Starting upload: /tmp/scp-speedtest.local.xxxxxx/scp-speedtest-100M.bin -> my-vps:/tmp/scp-speedtest.xxxxxx/scp-speedtest-100M.bin
-scp-speedtest-100M.bin                     100%  100MB  14.8MB/s   00:06
-[13:20:09] Upload completed: 104857600 bytes, 6.746740 seconds, 14.82 MiB/s
-[13:20:09] Preparing remote download test file: my-vps:/tmp/scp-speedtest.xxxxxx/scp-speedtest-100M.bin (100M / 104857600 bytes)
-[13:20:09] Remote download test file ready
-[13:20:09] Starting download: my-vps:/tmp/scp-speedtest.xxxxxx/scp-speedtest-100M.bin -> /tmp/scp-speedtest.local.xxxxxx/download/scp-speedtest-100M.bin
+[13:20:02] Preparing remote download test file: my-vps:/tmp/scp-speedtest.xxxxxx/scp-speedtest-100M.bin (100M / 104857600 bytes)
+[13:20:02] Remote download test file ready
+[13:20:02] Starting download: my-vps:/tmp/scp-speedtest.xxxxxx/scp-speedtest-100M.bin -> /tmp/scp-speedtest.local.xxxxxx/download/scp-speedtest-100M.bin
 scp-speedtest-100M.bin                     100%  100MB  14.2MB/s   00:07
-[13:20:16] Download completed: 104857600 bytes, 7.041432 seconds, 14.20 MiB/s
-[13:20:16] Verifying downloaded file checksum
-[13:20:16] Checksum verification passed
+[13:20:09] Download completed: 104857600 bytes, 7.041432 seconds, 14.20 MiB/s
+[13:20:09] Verifying downloaded file checksum
+[13:20:09] Checksum verification passed
+[13:20:09] Starting upload: /tmp/scp-speedtest.local.xxxxxx/scp-speedtest-100M.bin -> my-vps:/tmp/scp-speedtest.xxxxxx/scp-speedtest-100M.bin
+scp-speedtest-100M.bin                     100%  100MB  14.8MB/s   00:06
+[13:20:16] Upload completed: 104857600 bytes, 6.746740 seconds, 14.82 MiB/s
 ======================================================================
 scp-speedtest result
 GitHub   : https://github.com/cpiz/scp-speedtest
 Target   : my-vps
 Test file: scp-speedtest-100M.bin (100.00 MiB / 104857600 bytes)
 ----------------------------------------------------------------------
-Upload   : COMPLETED       100.00 / 100.00    MiB    6.746740 s     14.82 MiB/s
 Download : COMPLETED       100.00 / 100.00    MiB    7.041432 s     14.20 MiB/s
+Upload   : COMPLETED       100.00 / 100.00    MiB    6.746740 s     14.82 MiB/s
 ======================================================================
 ```
 
 JSON 输出：
 
 ```json
-{"ok":true,"version":"1.0.2","target":"my-vps","size":"100M","test_file":"scp-speedtest-100M.bin","bytes":104857600,"started_at":"2026-06-23T05:20:01Z","ended_at":"2026-06-23T05:20:16Z","remote_dir":"/tmp/scp-speedtest.xxxxxx","remote_generator":{"status":"completed","method":"truncate"},"upload":{"status":"completed","bytes":104857600,"seconds":6.746740,"mib_per_second":14.82},"download":{"status":"completed","bytes":104857600,"seconds":7.041432,"mib_per_second":14.20}}
+{"ok":true,"version":"1.1.0","target":"my-vps","size":"100M","test_file":"scp-speedtest-100M.bin","bytes":104857600,"started_at":"2026-06-23T05:20:01Z","ended_at":"2026-06-23T05:20:16Z","remote_dir":"/tmp/scp-speedtest.xxxxxx","remote_generator":{"status":"completed","method":"truncate"},"upload":{"status":"completed","bytes":104857600,"seconds":6.746740,"mib_per_second":14.82},"download":{"status":"completed","bytes":104857600,"seconds":7.041432,"mib_per_second":14.20}}
 ```
 
 稳定字段契约和 schema 见 [JSON Output Contract](docs/json-output.md)。
@@ -176,9 +176,9 @@ JSON 输出：
 1. 在本地临时目录生成指定大小的上传测试文件。
 2. 使用 `ssh` 在远端创建临时目录，或使用 `--remote-dir` 指定的目录。
 3. 在远端生成同样大小的下载测试文件。
-4. 使用 `scp` 上传本地测试文件并计时。
-5. 使用 `scp` 下载远端测试文件并计时。
-6. 对完整下载文件做 SHA-256 checksum 校验。
+4. 使用 `scp` 下载远端测试文件并计时。
+5. 对完整下载文件做 SHA-256 checksum 校验。
+6. 使用 `scp` 上传本地测试文件并计时。
 7. 默认清理本地和远端临时文件。
 
 checksum 校验不计入上传或下载耗时。
@@ -191,16 +191,16 @@ checksum 校验不计入上传或下载耗时。
 
 传输过程中按 `Ctrl-C` 会中断当前 `scp` 阶段，但脚本会继续执行后续阶段并输出已收集的数据：
 
-- 上传阶段中断：脚本会查询远端上传目标文件已写入大小，然后继续下载远端预先生成的完整测试文件。
-- 下载阶段中断：脚本会读取本地已下载文件大小，并进入清理和结果输出。
-- 下载未完整完成时，checksum 校验会跳过；如果只是上传中断但下载完整完成，仍会校验下载文件。
+- 下载阶段中断：脚本会读取本地已下载文件大小，然后继续上传本地测试文件。
+- 上传阶段中断：脚本会查询远端上传目标文件已写入大小，然后进入清理和结果输出。
+- 下载未完整完成时，checksum 校验会跳过。
 - 清理阶段仍会尽量删除本地临时目录、远端测试文件和远端临时目录。
 
 部分传输输出示例：
 
 ```text
-Upload: interrupted, 11534336 / 104857600 bytes, 21.000000 seconds, 0.52 MiB/s
-Download: completed, 104857600 / 104857600 bytes, 9.500000 seconds, 10.53 MiB/s
+Download: interrupted, 11534336 / 104857600 bytes, 21.000000 seconds, 0.52 MiB/s
+Upload: completed, 104857600 / 104857600 bytes, 9.500000 seconds, 10.53 MiB/s
 ```
 
 ## 多轮测速
