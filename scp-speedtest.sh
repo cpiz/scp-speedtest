@@ -10,7 +10,7 @@ fi
 
 set -euo pipefail
 
-VERSION="1.1.2"
+VERSION="1.1.3"
 DEFAULT_SIZE="100M"
 PROJECT_URL="https://github.com/cpiz/scp-speedtest"
 
@@ -106,7 +106,7 @@ Usage:
 
 Description:
   Measure upload and download throughput with scp.
-  Version: 1.1.2
+  Version: 1.1.3
   Authentication is handled by ssh/scp; this script does not store passwords.
   GitHub: https://github.com/cpiz/scp-speedtest
 
@@ -1161,6 +1161,10 @@ run_speedtest() {
   else
     log_event "Skipping checksum verification because transfer was interrupted or partial"
   fi
+
+  log_step "Preparing remote upload target: ${REMOTE_SPEC}:${REMOTE_TEST_FILE}"
+  build_ssh_cmd
+  "${SSH_CMD[@]}" "$REMOTE_SPEC" "rm -f -- $(shell_quote "$REMOTE_TEST_FILE")"
 
   log_step "Starting upload: ${local_file} -> $(format_remote_scp_path "$REMOTE_TEST_FILE")"
   upload_start="$(now_seconds)"

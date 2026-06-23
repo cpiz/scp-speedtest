@@ -35,7 +35,7 @@ chmod +x scp-speedtest.sh
 Run directly from GitHub for a one-off test:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.1.2/scp-speedtest.sh | bash -s -- my-vps
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.1.3/scp-speedtest.sh | bash -s -- my-vps
 ```
 
 For regular use, download the script first and review it before running.
@@ -70,13 +70,13 @@ Run multiple rounds and print averages:
 One-line install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.1.2/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.1.3/install.sh | bash
 ```
 
 Install to a user-writable prefix:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.1.2/install.sh | PREFIX="$HOME/.local" bash
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.1.3/install.sh | PREFIX="$HOME/.local" bash
 ```
 
 Install to `/usr/local/bin/scp-speedtest`:
@@ -166,7 +166,7 @@ Upload   : COMPLETED       100.00 / 100.00    MiB    6.746740 s     14.82 MiB/s
 JSON output:
 
 ```json
-{"ok":true,"version":"1.1.2","target":"my-vps","size":"100M","test_file":"scp-speedtest-100M.bin","bytes":104857600,"started_at":"2026-06-23T05:20:01Z","ended_at":"2026-06-23T05:20:16Z","remote_dir":"/tmp/scp-speedtest.xxxxxx","remote_generator":{"status":"completed","method":"truncate"},"upload":{"status":"completed","bytes":104857600,"seconds":6.746740,"mib_per_second":14.82},"download":{"status":"completed","bytes":104857600,"seconds":7.041432,"mib_per_second":14.20}}
+{"ok":true,"version":"1.1.3","target":"my-vps","size":"100M","test_file":"scp-speedtest-100M.bin","bytes":104857600,"started_at":"2026-06-23T05:20:01Z","ended_at":"2026-06-23T05:20:16Z","remote_dir":"/tmp/scp-speedtest.xxxxxx","remote_generator":{"status":"completed","method":"truncate"},"upload":{"status":"completed","bytes":104857600,"seconds":6.746740,"mib_per_second":14.82},"download":{"status":"completed","bytes":104857600,"seconds":7.041432,"mib_per_second":14.20}}
 ```
 
 See [JSON Output Contract](docs/json-output.md) for the stable field contract and schema.
@@ -178,7 +178,7 @@ See [JSON Output Contract](docs/json-output.md) for the stable field contract an
 3. Create a same-size download test file on the remote host.
 4. Download the remote test file with `scp` and measure elapsed time.
 5. Verify the completed download with a SHA-256 checksum.
-6. Upload the local test file with `scp` and measure elapsed time.
+6. Clear the remote test path, then upload the local test file with `scp` and measure elapsed time.
 7. Clean up local and remote temporary files by default.
 
 Checksum verification is not included in upload or download timing.

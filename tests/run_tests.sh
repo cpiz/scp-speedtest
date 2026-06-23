@@ -73,7 +73,7 @@ test_no_arguments_prints_help() {
 
   [[ "$status" -eq 0 ]] || fail "no arguments should print help and exit 0. Status: ${status}. Output: ${output}"
   assert_contains "$output" "Usage:" "no arguments prints usage"
-  assert_contains "$output" "Version: 1.1.2" "no arguments prints version"
+  assert_contains "$output" "Version: 1.1.3" "no arguments prints version"
   assert_contains "$output" "Options:" "no arguments prints options"
   assert_contains "$output" "Examples:" "no arguments prints examples"
   assert_contains "$output" "GitHub: https://github.com/cpiz/scp-speedtest" "no arguments prints project URL"
@@ -470,6 +470,66 @@ EOF
   chmod +x "${bin_dir}/ssh"
 }
 
+make_fake_interrupted_upload_fixture() {
+  local fixture_dir="$1"
+  make_fake_remote_fixture "$fixture_dir"
+
+  cat >"${fixture_dir}/bin/scp" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+args=()
+while (($#)); do
+  case "$1" in
+    -q|-O)
+      shift
+      ;;
+    -F|-P|-i|-J|-o)
+      shift 2
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      shift
+      ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+root="${FAKE_REMOTE_ROOT:?}"
+src="${args[0]}"
+dst="${args[1]}"
+
+map_remote() {
+  local spec="$1"
+  local path="${spec#*:}"
+  path="${path//\'/}"
+  printf '%s%s' "$root" "$path"
+}
+
+if [[ "$src" == *:* && "$dst" != *:* ]]; then
+  src_file="$(map_remote "$src")"
+  mkdir -p "$(dirname "$dst")"
+  cp "$src_file" "$dst"
+elif [[ "$src" != *:* && "$dst" == *:* ]]; then
+  dst_file="$(map_remote "$dst")"
+  mkdir -p "$(dirname "$dst_file")"
+  dd if="$src" of="$dst_file" bs=262144 count=1 status=none
+  exit 130
+else
+  printf 'fake scp: unsupported direction: %s -> %s\n' "$src" "$dst" >&2
+  exit 97
+fi
+EOF
+
+  chmod +x "${fixture_dir}/bin/scp"
+}
+
 test_fake_ssh_scp_full_flow_json() {
   local fixture_dir output
   fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/scp-speedtest-test.XXXXXX")"
@@ -482,6 +542,20 @@ test_fake_ssh_scp_full_flow_json() {
   assert_contains "$output" '"remote_generator":{"status":"completed","method":"truncate"}' "fake full flow records remote generator"
   assert_contains "$output" '"upload":{"status":"completed","bytes":1048576' "fake full flow records completed upload"
   assert_contains "$output" '"download":{"status":"completed","bytes":1048576' "fake full flow records completed download"
+
+  rm -rf "$fixture_dir"
+}
+
+test_upload_interruption_ignores_prior_download_file_size() {
+  local fixture_dir output
+  fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/scp-speedtest-test.XXXXXX")"
+  make_fake_interrupted_upload_fixture "$fixture_dir"
+
+  output="$(PATH="${fixture_dir}/bin:$PATH" FAKE_REMOTE_ROOT="${fixture_dir}/remote" bash "$SCRIPT" fake-host --size 1M 2>&1)"
+
+  assert_contains "$output" "Preparing remote upload target:" "remote upload target is cleared before upload"
+  assert_contains "$output" "Upload   : INTERRUPTED       0.25 / 1.00" "interrupted upload reports actual partial upload size"
+  assert_not_contains "$output" "Upload   : INTERRUPTED       1.00 / 1.00" "interrupted upload does not reuse prior download file size"
 
   rm -rf "$fixture_dir"
 }
@@ -566,7 +640,7 @@ test_install_script_local_install() {
   installed_version="$("${fixture_dir}/prefix/bin/scp-speedtest" --version)"
 
   assert_contains "$output" "Installed scp-speedtest" "install script reports installed binary"
-  [[ "$installed_version" == "1.1.2" ]] || fail "installed script should print version 1.1.2. Actual: ${installed_version}"
+  [[ "$installed_version" == "1.1.3" ]] || fail "installed script should print version 1.1.3. Actual: ${installed_version}"
   pass "install script installs runnable binary"
 
   rm -rf "$fixture_dir"
@@ -591,6 +665,7 @@ test_partial_transfer_output
 test_error_result_output
 test_timeout_status_detection
 test_fake_ssh_scp_full_flow_json
+test_upload_interruption_ignores_prior_download_file_size
 test_fake_ssh_scp_runs_download_before_upload
 test_fake_ssh_failure_json
 test_fake_ssh_scp_multi_round_json

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PROJECT_URL="https://github.com/cpiz/scp-speedtest"
-VERSION="${VERSION:-v1.1.2}"
+VERSION="${VERSION:-v1.1.3}"
 PREFIX="${PREFIX:-/usr/local}"
 BINDIR="${BINDIR:-${PREFIX}/bin}"
 BIN="${BIN:-scp-speedtest}"

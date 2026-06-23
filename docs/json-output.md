@@ -19,7 +19,7 @@ The machine-readable schema is available at [`schemas/scp-speedtest-output.schem
 ```json
 {
   "ok": true,
-  "version": "1.1.2",
+  "version": "1.1.3",
   "target": "my-vps",
   "size": "100M",
   "test_file": "scp-speedtest-100M.bin",
@@ -83,7 +83,7 @@ When `--json` is enabled and a runtime command fails after argument validation, 
 ```json
 {
   "ok": false,
-  "version": "1.1.2",
+  "version": "1.1.3",
   "target": "my-vps",
   "size": "100M",
   "test_file": "scp-speedtest-100M.bin",
