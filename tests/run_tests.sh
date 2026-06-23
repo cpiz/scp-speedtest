@@ -57,6 +57,7 @@ test_no_arguments_prints_help() {
 
   [[ "$status" -eq 0 ]] || fail "no arguments should print help and exit 0. Status: ${status}. Output: ${output}"
   assert_contains "$output" "Usage:" "no arguments prints usage"
+  assert_contains "$output" "Version: 0.1.0" "no arguments prints version"
   assert_contains "$output" "Options:" "no arguments prints options"
   assert_contains "$output" "Examples:" "no arguments prints examples"
   assert_contains "$output" "GitHub: https://github.com/cpiz/scp-speedtest" "no arguments prints project URL"

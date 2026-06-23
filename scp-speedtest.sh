@@ -100,6 +100,7 @@ Usage:
 
 Description:
   Measure upload and download throughput with scp.
+  Version: 0.1.0
   Authentication is handled by ssh/scp; this script does not store passwords.
   GitHub: https://github.com/cpiz/scp-speedtest
 
