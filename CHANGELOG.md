@@ -4,12 +4,16 @@
 
 格式参考 Keep a Changelog；正式发布标签创建后，版本号遵循语义化版本。
 
-## [Unreleased]
+## [1.0.1] - 2026-06-23
 
 ### 新增
 
 - README 状态徽章。
 - 可嵌入 README 的终端演示 SVG 和 asciinema cast 文件。
+
+### 修复
+
+- 修复通过 `curl ... | bash -s -- <target>` 从 stdin 执行时 `BASH_SOURCE[0]` 触发 unbound variable 的问题。
 
 ## [1.0.0] - 2026-06-23
 

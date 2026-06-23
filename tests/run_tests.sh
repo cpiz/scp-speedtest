@@ -58,7 +58,7 @@ test_no_arguments_prints_help() {
 
   [[ "$status" -eq 0 ]] || fail "no arguments should print help and exit 0. Status: ${status}. Output: ${output}"
   assert_contains "$output" "Usage:" "no arguments prints usage"
-  assert_contains "$output" "Version: 1.0.0" "no arguments prints version"
+  assert_contains "$output" "Version: 1.0.1" "no arguments prints version"
   assert_contains "$output" "Options:" "no arguments prints options"
   assert_contains "$output" "Examples:" "no arguments prints examples"
   assert_contains "$output" "GitHub: https://github.com/cpiz/scp-speedtest" "no arguments prints project URL"
@@ -81,6 +81,15 @@ test_target_option() {
 
   assert_contains "$output" "Target: my-vps" "--target is accepted"
   assert_contains "$output" "Test file: scp-speedtest-100M.bin (104857600 bytes)" "--target keeps default test file size"
+}
+
+test_stdin_execution() {
+  local output
+  output="$(bash -s -- my-vps --dry-run <"$SCRIPT")"
+
+  assert_contains "$output" "Target: my-vps" "stdin execution accepts positional target"
+  assert_contains "$output" "Test file: scp-speedtest-100M.bin (104857600 bytes)" "stdin execution keeps default test file size"
+  assert_contains "$output" "SSH command: ssh my-vps" "stdin execution builds SSH command"
 }
 
 test_size_specific_filename() {
@@ -462,7 +471,7 @@ test_install_script_local_install() {
   installed_version="$("${fixture_dir}/prefix/bin/scp-speedtest" --version)"
 
   assert_contains "$output" "Installed scp-speedtest" "install script reports installed binary"
-  [[ "$installed_version" == "1.0.0" ]] || fail "installed script should print version 1.0.0. Actual: ${installed_version}"
+  [[ "$installed_version" == "1.0.1" ]] || fail "installed script should print version 1.0.1. Actual: ${installed_version}"
   pass "install script installs runnable binary"
 
   rm -rf "$fixture_dir"
@@ -471,6 +480,7 @@ test_install_script_local_install() {
 test_no_arguments_prints_help
 test_default_size_and_positional_target
 test_target_option
+test_stdin_execution
 test_size_specific_filename
 test_explicit_connection_options
 test_quiet_option

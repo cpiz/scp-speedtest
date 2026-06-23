@@ -10,7 +10,7 @@ fi
 
 set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 DEFAULT_SIZE="100M"
 PROJECT_URL="https://github.com/cpiz/scp-speedtest"
 
@@ -102,7 +102,7 @@ Usage:
 
 Description:
   Measure upload and download throughput with scp.
-  Version: 1.0.0
+  Version: 1.0.1
   Authentication is handled by ssh/scp; this script does not store passwords.
   GitHub: https://github.com/cpiz/scp-speedtest
 
@@ -1126,6 +1126,6 @@ main() {
   run_speedtest_rounds "$bytes"
 }
 
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+if [[ "${BASH_SOURCE[0]-}" == "$0" || -z "${BASH_SOURCE[0]-}" ]]; then
   main "$@"
 fi
