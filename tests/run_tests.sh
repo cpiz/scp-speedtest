@@ -137,6 +137,13 @@ test_connection_options() {
   assert_contains "$output" "-o ConnectTimeout=7" "connect timeout is passed to ssh/scp commands"
 }
 
+test_rounds_dry_run() {
+  local output
+  output="$(bash "$SCRIPT" my-vps --rounds 3 --dry-run)"
+
+  assert_contains "$output" "Rounds: 3" "dry run prints requested rounds"
+}
+
 test_requires_bash() {
   assert_fails_contains "running with sh fails clearly" "requires bash" \
     sh "$SCRIPT" my-vps --dry-run
@@ -343,6 +350,23 @@ test_fake_ssh_scp_full_flow_json() {
   rm -rf "$fixture_dir"
 }
 
+test_fake_ssh_scp_multi_round_json() {
+  local fixture_dir output
+  fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/scp-speedtest-test.XXXXXX")"
+  make_fake_remote_fixture "$fixture_dir"
+
+  output="$(PATH="${fixture_dir}/bin:$PATH" FAKE_REMOTE_ROOT="${fixture_dir}/remote" bash "$SCRIPT" fake-host --size 1M --rounds 2 --json --quiet)"
+
+  assert_contains "$output" '"ok":true' "multi-round JSON marks result ok"
+  assert_contains "$output" '"round_count":2' "multi-round JSON records round count"
+  assert_contains "$output" '"round":1' "multi-round JSON includes first round"
+  assert_contains "$output" '"round":2' "multi-round JSON includes second round"
+  assert_contains "$output" '"summary":{"upload":{"completed_rounds":2' "multi-round JSON includes upload summary"
+  assert_contains "$output" '"download":{"completed_rounds":2' "multi-round JSON includes download summary"
+
+  rm -rf "$fixture_dir"
+}
+
 test_invalid_arguments() {
   assert_fails_contains "positional target and --target cannot be combined" "cannot be used together" \
     bash "$SCRIPT" my-vps --target other --dry-run
@@ -355,6 +379,9 @@ test_invalid_arguments() {
 
   assert_fails_contains "invalid size fails" "invalid --size value" \
     bash "$SCRIPT" my-vps --size 10Z --dry-run
+
+  assert_fails_contains "rounds must be positive" "--rounds must be a positive integer" \
+    bash "$SCRIPT" my-vps --rounds 0 --dry-run
 }
 
 test_no_arguments_prints_help
@@ -365,11 +392,13 @@ test_explicit_connection_options
 test_quiet_option
 test_json_dry_run
 test_connection_options
+test_rounds_dry_run
 test_requires_bash
 test_remote_scp_path_format
 test_partial_transfer_output
 test_timeout_status_detection
 test_fake_ssh_scp_full_flow_json
+test_fake_ssh_scp_multi_round_json
 test_invalid_arguments
 
 printf 'All %d assertions passed.\n' "$PASS_COUNT"

@@ -22,6 +22,7 @@ SSH_CONFIG=""
 JUMP_HOST=""
 CONNECT_TIMEOUT=""
 MAX_DURATION=""
+ROUNDS=1
 SIZE="$DEFAULT_SIZE"
 SIZE_LABEL="$DEFAULT_SIZE"
 REMOTE_DIR=""
@@ -57,6 +58,20 @@ STARTED_AT=""
 ENDED_AT=""
 REMOTE_GENERATOR=""
 REMOTE_GENERATOR_STATUS="skipped"
+ROUND_INDEX=1
+ROUND_STARTED_ATS=()
+ROUND_ENDED_ATS=()
+ROUND_REMOTE_DIRS=()
+ROUND_REMOTE_GENERATORS=()
+ROUND_REMOTE_GENERATOR_STATUSES=()
+ROUND_UPLOAD_STATUSES=()
+ROUND_UPLOAD_BYTES=()
+ROUND_UPLOAD_SECONDS=()
+ROUND_UPLOAD_MIBPS=()
+ROUND_DOWNLOAD_STATUSES=()
+ROUND_DOWNLOAD_BYTES=()
+ROUND_DOWNLOAD_SECONDS=()
+ROUND_DOWNLOAD_MIBPS=()
 
 die() {
   printf 'Error: %s\n' "$*" >&2
@@ -89,6 +104,7 @@ Options:
   --jump-host <host>             ProxyJump / -J host
   --connect-timeout <seconds>    SSH/SCP connection timeout in seconds
   --max-duration <seconds>       Per-transfer timeout for upload and download
+  --rounds <count>               Number of test rounds, default 1
   --ssh-option <Key=Value>       Extra ssh/scp -o option; can be repeated
   --size <100M|1G>               Test file size, default 100M
   --remote-dir <path>            Remote test directory, defaults to remote mktemp -d
@@ -104,6 +120,7 @@ Examples:
   ./scp-speedtest.sh my-vps
   ./scp-speedtest.sh --target my-vps
   ./scp-speedtest.sh --host 1.2.3.4 --user root --port 2222 --identity-file ~/.ssh/id_ed25519
+  ./scp-speedtest.sh my-vps --rounds 3
   ./scp-speedtest.sh my-vps --size 1G --json
 EOF
 }
@@ -160,6 +177,11 @@ parse_args() {
       --max-duration)
         require_value "$1" "${2:-}"
         MAX_DURATION="$2"
+        shift 2
+        ;;
+      --rounds)
+        require_value "$1" "${2:-}"
+        ROUNDS="$2"
         shift 2
         ;;
       --ssh-option)
@@ -242,6 +264,9 @@ validate_args() {
   fi
   if [[ -n "$MAX_DURATION" && ! "$MAX_DURATION" =~ ^[0-9]+$ ]]; then
     die "--max-duration must be numeric"
+  fi
+  if [[ ! "$ROUNDS" =~ ^[0-9]+$ || "$ROUNDS" -lt 1 ]]; then
+    die "--rounds must be a positive integer"
   fi
   if [[ -n "$MAX_DURATION" ]] && ! command -v perl >/dev/null 2>&1 && ! command -v timeout >/dev/null 2>&1; then
     die "--max-duration requires perl or timeout"
@@ -433,6 +458,35 @@ PY
   fi
 }
 
+calc_total_seconds() {
+  if (($# == 0)); then
+    printf '0.000000\n'
+    return 0
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$@" <<'PY'
+import sys
+print(f"{sum(float(v) for v in sys.argv[1:]):.6f}")
+PY
+  elif command -v perl >/dev/null 2>&1; then
+    perl -e '$sum = 0; $sum += $_ for @ARGV; printf "%.6f\n", $sum' "$@"
+  else
+    awk 'BEGIN { for (i = 1; i < ARGC; i++) sum += ARGV[i]; printf "%.6f\n", sum }' "$@"
+  fi
+}
+
+calc_average_completed_mibps() {
+  local count="$1"
+  local bytes="$2"
+  local seconds="$3"
+  if ((count == 0)); then
+    printf '0.00\n'
+    return 0
+  fi
+  calc_mibps $((count * bytes)) "$seconds"
+}
+
 build_ssh_cmd() {
   SSH_CMD=(ssh)
   [[ -z "$SSH_CONFIG" ]] || SSH_CMD+=(-F "$SSH_CONFIG")
@@ -584,6 +638,37 @@ print_human_result() {
   printf 'Download: %s, %s / %s bytes, %s seconds, %s MiB/s\n' "$(status_label "$DOWNLOAD_STATUS")" "$DOWNLOAD_BYTES" "$bytes" "$DOWNLOAD_SECONDS" "$DOWNLOAD_MIBPS"
 }
 
+print_human_summary() {
+  local bytes="$1"
+  local upload_completed=0
+  local download_completed=0
+  local upload_seconds_values=()
+  local download_seconds_values=()
+  local upload_total_seconds download_total_seconds
+  local upload_avg download_avg
+  local i
+
+  for ((i = 0; i < ROUNDS; i++)); do
+    if [[ "${ROUND_UPLOAD_STATUSES[$i]}" == "completed" ]]; then
+      upload_completed=$((upload_completed + 1))
+      upload_seconds_values+=("${ROUND_UPLOAD_SECONDS[$i]}")
+    fi
+    if [[ "${ROUND_DOWNLOAD_STATUSES[$i]}" == "completed" ]]; then
+      download_completed=$((download_completed + 1))
+      download_seconds_values+=("${ROUND_DOWNLOAD_SECONDS[$i]}")
+    fi
+  done
+
+  upload_total_seconds="$(calc_total_seconds "${upload_seconds_values[@]+"${upload_seconds_values[@]}"}")"
+  download_total_seconds="$(calc_total_seconds "${download_seconds_values[@]+"${download_seconds_values[@]}"}")"
+  upload_avg="$(calc_average_completed_mibps "$upload_completed" "$bytes" "$upload_total_seconds")"
+  download_avg="$(calc_average_completed_mibps "$download_completed" "$bytes" "$download_total_seconds")"
+
+  printf 'Summary:\n'
+  printf 'Upload average: %s MiB/s (%s/%s completed rounds)\n' "$upload_avg" "$upload_completed" "$ROUNDS"
+  printf 'Download average: %s MiB/s (%s/%s completed rounds)\n' "$download_avg" "$download_completed" "$ROUNDS"
+}
+
 print_json_result() {
   local bytes="$1"
 
@@ -603,6 +688,112 @@ print_json_result() {
   printf '}\n'
 }
 
+print_json_multi_result() {
+  local bytes="$1"
+  local upload_completed=0
+  local download_completed=0
+  local upload_seconds_values=()
+  local download_seconds_values=()
+  local upload_total_seconds download_total_seconds
+  local upload_avg download_avg
+  local ok=true
+  local i
+
+  for ((i = 0; i < ROUNDS; i++)); do
+    if [[ "${ROUND_UPLOAD_STATUSES[$i]}" == "completed" ]]; then
+      upload_completed=$((upload_completed + 1))
+      upload_seconds_values+=("${ROUND_UPLOAD_SECONDS[$i]}")
+    fi
+    if [[ "${ROUND_DOWNLOAD_STATUSES[$i]}" == "completed" ]]; then
+      download_completed=$((download_completed + 1))
+      download_seconds_values+=("${ROUND_DOWNLOAD_SECONDS[$i]}")
+    else
+      ok=false
+    fi
+  done
+
+  upload_total_seconds="$(calc_total_seconds "${upload_seconds_values[@]+"${upload_seconds_values[@]}"}")"
+  download_total_seconds="$(calc_total_seconds "${download_seconds_values[@]+"${download_seconds_values[@]}"}")"
+  upload_avg="$(calc_average_completed_mibps "$upload_completed" "$bytes" "$upload_total_seconds")"
+  download_avg="$(calc_average_completed_mibps "$download_completed" "$bytes" "$download_total_seconds")"
+
+  printf '{'
+  printf '"ok":%s,' "$ok"
+  printf '"version":"%s",' "$(json_escape "$VERSION")"
+  printf '"target":"%s",' "$(json_escape "$REMOTE_SPEC")"
+  printf '"size":"%s",' "$(json_escape "$SIZE")"
+  printf '"test_file":"%s",' "$(json_escape "$TEST_FILE_NAME")"
+  printf '"bytes":%s,' "$bytes"
+  printf '"round_count":%s,' "$ROUNDS"
+  printf '"started_at":"%s",' "$(json_escape "${ROUND_STARTED_ATS[0]}")"
+  printf '"ended_at":"%s",' "$(json_escape "${ROUND_ENDED_ATS[$((ROUNDS - 1))]}")"
+  printf '"rounds":['
+  for ((i = 0; i < ROUNDS; i++)); do
+    ((i == 0)) || printf ','
+    printf '{'
+    printf '"round":%s,' "$((i + 1))"
+    printf '"started_at":"%s",' "$(json_escape "${ROUND_STARTED_ATS[$i]}")"
+    printf '"ended_at":"%s",' "$(json_escape "${ROUND_ENDED_ATS[$i]}")"
+    printf '"remote_dir":"%s",' "$(json_escape "${ROUND_REMOTE_DIRS[$i]}")"
+    printf '"remote_generator":{"status":"%s","method":"%s"},' "$(json_escape "${ROUND_REMOTE_GENERATOR_STATUSES[$i]}")" "$(json_escape "${ROUND_REMOTE_GENERATORS[$i]}")"
+    printf '"upload":{"status":"%s","bytes":%s,"seconds":%s,"mib_per_second":%s},' "$(json_escape "${ROUND_UPLOAD_STATUSES[$i]}")" "${ROUND_UPLOAD_BYTES[$i]}" "${ROUND_UPLOAD_SECONDS[$i]}" "${ROUND_UPLOAD_MIBPS[$i]}"
+    printf '"download":{"status":"%s","bytes":%s,"seconds":%s,"mib_per_second":%s}' "$(json_escape "${ROUND_DOWNLOAD_STATUSES[$i]}")" "${ROUND_DOWNLOAD_BYTES[$i]}" "${ROUND_DOWNLOAD_SECONDS[$i]}" "${ROUND_DOWNLOAD_MIBPS[$i]}"
+    printf '}'
+  done
+  printf '],'
+  printf '"summary":{'
+  printf '"upload":{"completed_rounds":%s,"average_mib_per_second":%s},' "$upload_completed" "$upload_avg"
+  printf '"download":{"completed_rounds":%s,"average_mib_per_second":%s}' "$download_completed" "$download_avg"
+  printf '}'
+  printf '}\n'
+}
+
+reset_round_state() {
+  LOCAL_TMP_DIR=""
+  LOCAL_DOWNLOAD_DIR=""
+  REMOTE_TMP_DIR=""
+  REMOTE_TMP_CREATED=0
+  REMOTE_TEST_FILE=""
+  TRANSFER_INTERRUPTED=0
+  LAST_SCP_STATUS=0
+  UPLOAD_STATUS="skipped"
+  UPLOAD_BYTES=0
+  UPLOAD_SECONDS="0.000000"
+  UPLOAD_MIBPS="0.00"
+  DOWNLOAD_STATUS="skipped"
+  DOWNLOAD_BYTES=0
+  DOWNLOAD_SECONDS="0.000000"
+  DOWNLOAD_MIBPS="0.00"
+  STARTED_AT=""
+  ENDED_AT=""
+  REMOTE_GENERATOR=""
+  REMOTE_GENERATOR_STATUS="skipped"
+}
+
+collect_round_result() {
+  ROUND_STARTED_ATS+=("$STARTED_AT")
+  ROUND_ENDED_ATS+=("$ENDED_AT")
+  ROUND_REMOTE_DIRS+=("$REMOTE_TMP_DIR")
+  ROUND_REMOTE_GENERATORS+=("$REMOTE_GENERATOR")
+  ROUND_REMOTE_GENERATOR_STATUSES+=("$REMOTE_GENERATOR_STATUS")
+  ROUND_UPLOAD_STATUSES+=("$UPLOAD_STATUS")
+  ROUND_UPLOAD_BYTES+=("$UPLOAD_BYTES")
+  ROUND_UPLOAD_SECONDS+=("$UPLOAD_SECONDS")
+  ROUND_UPLOAD_MIBPS+=("$UPLOAD_MIBPS")
+  ROUND_DOWNLOAD_STATUSES+=("$DOWNLOAD_STATUS")
+  ROUND_DOWNLOAD_BYTES+=("$DOWNLOAD_BYTES")
+  ROUND_DOWNLOAD_SECONDS+=("$DOWNLOAD_SECONDS")
+  ROUND_DOWNLOAD_MIBPS+=("$DOWNLOAD_MIBPS")
+}
+
+print_round_human_result() {
+  local bytes="$1"
+  if ((ROUNDS > 1)); then
+    printf 'Round %s/%s:\n' "$ROUND_INDEX" "$ROUNDS"
+  fi
+  print_human_result "$bytes"
+}
+
 print_dry_run() {
   local bytes="$1"
   build_ssh_cmd
@@ -614,12 +805,14 @@ print_dry_run() {
     printf '"size":"%s",' "$(json_escape "$SIZE")"
     printf '"test_file":"%s",' "$(json_escape "$TEST_FILE_NAME")"
     printf '"bytes":%s,' "$bytes"
+    printf '"rounds":%s,' "$ROUNDS"
     printf '"ssh_command":"%s",' "$(json_escape "$(command_to_string "${SSH_CMD[@]}" "$REMOTE_SPEC")")"
     printf '"scp_command":"%s"' "$(json_escape "$(command_to_string "${SCP_CMD[@]}")")"
     printf '}\n'
   else
     printf 'Target: %s\n' "$REMOTE_SPEC"
     printf 'Test file: %s (%s bytes)\n' "$TEST_FILE_NAME" "$bytes"
+    printf 'Rounds: %s\n' "$ROUNDS"
     printf 'SSH command: %s\n' "$(command_to_string "${SSH_CMD[@]}" "$REMOTE_SPEC")"
     printf 'SCP command: %s\n' "$(command_to_string "${SCP_CMD[@]}")"
   fi
@@ -639,6 +832,9 @@ run_speedtest() {
   mkdir -p "$LOCAL_DOWNLOAD_DIR"
   download_file="${LOCAL_DOWNLOAD_DIR}/${TEST_FILE_NAME}"
 
+  if ((ROUNDS > 1)); then
+    log_event "Round ${ROUND_INDEX}/${ROUNDS}"
+  fi
   log_event "Target: ${REMOTE_SPEC}"
   log_event "Creating local test file: ${local_file} (${SIZE} / ${bytes} bytes)"
   generate_test_file "$local_file" "$bytes"
@@ -715,10 +911,46 @@ run_speedtest() {
 
   ENDED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
+}
+
+run_speedtest_rounds() {
+  local bytes="$1"
+
+  for ((ROUND_INDEX = 1; ROUND_INDEX <= ROUNDS; ROUND_INDEX++)); do
+    reset_round_state
+    run_speedtest "$bytes"
+    collect_round_result
+
+    if ((JSON_OUTPUT == 0)); then
+      print_round_human_result "$bytes"
+    fi
+
+    cleanup
+    reset_round_state
+  done
+
   if ((JSON_OUTPUT == 1)); then
-    print_json_result "$bytes"
-  else
-    print_human_result "$bytes"
+    if ((ROUNDS == 1)); then
+      STARTED_AT="${ROUND_STARTED_ATS[0]}"
+      ENDED_AT="${ROUND_ENDED_ATS[0]}"
+      REMOTE_TMP_DIR="${ROUND_REMOTE_DIRS[0]}"
+      REMOTE_GENERATOR="${ROUND_REMOTE_GENERATORS[0]}"
+      REMOTE_GENERATOR_STATUS="${ROUND_REMOTE_GENERATOR_STATUSES[0]}"
+      UPLOAD_STATUS="${ROUND_UPLOAD_STATUSES[0]}"
+      UPLOAD_BYTES="${ROUND_UPLOAD_BYTES[0]}"
+      UPLOAD_SECONDS="${ROUND_UPLOAD_SECONDS[0]}"
+      UPLOAD_MIBPS="${ROUND_UPLOAD_MIBPS[0]}"
+      DOWNLOAD_STATUS="${ROUND_DOWNLOAD_STATUSES[0]}"
+      DOWNLOAD_BYTES="${ROUND_DOWNLOAD_BYTES[0]}"
+      DOWNLOAD_SECONDS="${ROUND_DOWNLOAD_SECONDS[0]}"
+      DOWNLOAD_MIBPS="${ROUND_DOWNLOAD_MIBPS[0]}"
+      print_json_result "$bytes"
+      reset_round_state
+    else
+      print_json_multi_result "$bytes"
+    fi
+  elif ((ROUNDS > 1)); then
+    print_human_summary "$bytes"
   fi
 }
 
@@ -740,7 +972,7 @@ main() {
   fi
 
   trap cleanup EXIT
-  run_speedtest "$bytes"
+  run_speedtest_rounds "$bytes"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

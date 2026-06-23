@@ -39,6 +39,12 @@ chmod +x scp-speedtest.sh
 ./scp-speedtest.sh my-vps --size 1G --json
 ```
 
+执行多轮测速并输出平均值：
+
+```bash
+./scp-speedtest.sh my-vps --rounds 3
+```
+
 ## 安装
 
 直接安装到 `/usr/local/bin/scp-speedtest`：
@@ -73,6 +79,7 @@ sudo make uninstall
 --jump-host <host>             ProxyJump / -J host
 --connect-timeout <seconds>    SSH/SCP connection timeout in seconds
 --max-duration <seconds>       Per-transfer timeout for upload and download
+--rounds <count>               Number of test rounds, default 1
 --ssh-option <Key=Value>       Extra ssh/scp -o option; can be repeated
 --size <100M|1G>               Test file size, default 100M
 --remote-dir <path>            Remote test directory, defaults to remote mktemp -d
@@ -146,6 +153,18 @@ checksum 校验不计入上传或下载耗时。
 Upload: interrupted, 11534336 / 104857600 bytes, 21.000000 seconds, 0.52 MiB/s
 Download: completed, 104857600 / 104857600 bytes, 9.500000 seconds, 10.53 MiB/s
 ```
+
+## 多轮测速
+
+使用 `--rounds <count>` 可以执行多轮同规格测速：
+
+```bash
+./scp-speedtest.sh my-vps --rounds 3
+```
+
+每一轮都会创建新的本地和远端临时文件，并在下一轮开始前完成清理。普通输出会打印每轮结果和最终 summary。summary 的平均速度只统计完整完成的轮次，因此中断或超时轮次会保留在结果里，但不会拉低已完成轮次的平均值。
+
+JSON 输出中，单轮结果保持原来的扁平结构以维持兼容性；多轮结果会使用 `rounds` 数组和 `summary` 对象。
 
 ## 准确性说明
 

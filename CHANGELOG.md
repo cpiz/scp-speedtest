@@ -12,5 +12,7 @@
 - SSH config alias 和显式 SSH 连接参数支持。
 - 人类可读的关键事件输出和 JSON 输出。
 - 支持上传/下载中断后的部分结果统计。
+- 支持 `--rounds` 多轮测速和完成轮次平均值。
 - 使用 fake command fixture 的本地单元测试。
 - Makefile 和 GitHub Actions CI。
+- 默认英文 README 和中文 README。

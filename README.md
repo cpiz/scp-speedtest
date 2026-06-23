@@ -39,6 +39,12 @@ Use a larger test file and print JSON:
 ./scp-speedtest.sh my-vps --size 1G --json
 ```
 
+Run multiple rounds and print averages:
+
+```bash
+./scp-speedtest.sh my-vps --rounds 3
+```
+
 ## Installation
 
 Install to `/usr/local/bin/scp-speedtest`:
@@ -73,6 +79,7 @@ sudo make uninstall
 --jump-host <host>             ProxyJump / -J host
 --connect-timeout <seconds>    SSH/SCP connection timeout in seconds
 --max-duration <seconds>       Per-transfer timeout for upload and download
+--rounds <count>               Number of test rounds, default 1
 --ssh-option <Key=Value>       Extra ssh/scp -o option; can be repeated
 --size <100M|1G>               Test file size, default 100M
 --remote-dir <path>            Remote test directory, defaults to remote mktemp -d
@@ -146,6 +153,18 @@ Partial transfer example:
 Upload: interrupted, 11534336 / 104857600 bytes, 21.000000 seconds, 0.52 MiB/s
 Download: completed, 104857600 / 104857600 bytes, 9.500000 seconds, 10.53 MiB/s
 ```
+
+## Multiple Rounds
+
+Use `--rounds <count>` to run the same test multiple times:
+
+```bash
+./scp-speedtest.sh my-vps --rounds 3
+```
+
+Each round creates fresh local and remote temporary files and cleans them up before the next round. Human-readable output prints each round and a final summary. The summary average uses completed rounds only, so interrupted or timed-out rounds remain visible but do not distort the completed-round average.
+
+For JSON output, single-round output keeps the original flat shape for compatibility. Multi-round JSON uses a `rounds` array plus a `summary` object.
 
 ## Accuracy Notes
 
