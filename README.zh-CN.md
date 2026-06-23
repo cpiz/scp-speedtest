@@ -124,6 +124,8 @@ JSON 输出：
 {"ok":true,"version":"0.1.0","target":"my-vps","size":"100M","test_file":"scp-speedtest-100M.bin","bytes":104857600,"started_at":"2026-06-23T05:20:01Z","ended_at":"2026-06-23T05:20:16Z","remote_dir":"/tmp/scp-speedtest.xxxxxx","remote_generator":{"status":"completed","method":"truncate"},"upload":{"status":"completed","bytes":104857600,"seconds":6.746740,"mib_per_second":14.82},"download":{"status":"completed","bytes":104857600,"seconds":7.041432,"mib_per_second":14.20}}
 ```
 
+稳定字段契约和 schema 见 [JSON Output Contract](docs/json-output.md)。
+
 ## 工作方式
 
 1. 在本地临时目录生成指定大小的上传测试文件。
@@ -215,3 +217,9 @@ shellcheck scp-speedtest.sh tests/run_tests.sh
 - 发布前更新 `CHANGELOG.md`。
 - 版本号在 `scp-speedtest.sh` 顶部的 `VERSION` 中维护。
 - 当前许可证为 MIT，见 `LICENSE`。
+
+## 项目入口
+
+- [贡献指南](CONTRIBUTING.md)
+- [安全策略](SECURITY.md)
+- [JSON 输出契约](docs/json-output.md)

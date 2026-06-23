@@ -16,3 +16,4 @@
 - 使用 fake command fixture 的本地单元测试。
 - Makefile 和 GitHub Actions CI。
 - 默认英文 README 和中文 README。
+- 贡献指南、安全策略、Issue/PR 模板和 JSON 输出契约。

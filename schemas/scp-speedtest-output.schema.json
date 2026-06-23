@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cpiz/scp-speedtest/schemas/scp-speedtest-output.schema.json",
+  "title": "scp-speedtest JSON output",
+  "type": "object",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/singleRoundResult"
+    },
+    {
+      "$ref": "#/$defs/multiRoundResult"
+    }
+  ],
+  "$defs": {
+    "transferStatus": {
+      "type": "string",
+      "enum": ["completed", "interrupted", "timeout", "skipped"]
+    },
+    "generatorStatus": {
+      "type": "string",
+      "enum": ["completed", "skipped"]
+    },
+    "generator": {
+      "type": "object",
+      "required": ["status", "method"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/generatorStatus"
+        },
+        "method": {
+          "type": "string"
+        }
+      }
+    },
+    "transfer": {
+      "type": "object",
+      "required": ["status", "bytes", "seconds", "mib_per_second"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/transferStatus"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "mib_per_second": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "baseFields": {
+      "type": "object",
+      "required": ["ok", "version", "target", "size", "test_file", "bytes", "started_at", "ended_at"],
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "size": {
+          "type": "string"
+        },
+        "test_file": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "started_at": {
+          "type": "string"
+        },
+        "ended_at": {
+          "type": "string"
+        }
+      }
+    },
+    "singleRoundResult": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseFields"
+        },
+        {
+          "type": "object",
+          "required": ["remote_dir", "remote_generator", "upload", "download"],
+          "additionalProperties": false,
+          "properties": {
+            "ok": true,
+            "version": true,
+            "target": true,
+            "size": true,
+            "test_file": true,
+            "bytes": true,
+            "started_at": true,
+            "ended_at": true,
+            "remote_dir": {
+              "type": "string"
+            },
+            "remote_generator": {
+              "$ref": "#/$defs/generator"
+            },
+            "upload": {
+              "$ref": "#/$defs/transfer"
+            },
+            "download": {
+              "$ref": "#/$defs/transfer"
+            }
+          }
+        }
+      ]
+    },
+    "roundResult": {
+      "type": "object",
+      "required": ["round", "started_at", "ended_at", "remote_dir", "remote_generator", "upload", "download"],
+      "additionalProperties": false,
+      "properties": {
+        "round": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "started_at": {
+          "type": "string"
+        },
+        "ended_at": {
+          "type": "string"
+        },
+        "remote_dir": {
+          "type": "string"
+        },
+        "remote_generator": {
+          "$ref": "#/$defs/generator"
+        },
+        "upload": {
+          "$ref": "#/$defs/transfer"
+        },
+        "download": {
+          "$ref": "#/$defs/transfer"
+        }
+      }
+    },
+    "summaryTransfer": {
+      "type": "object",
+      "required": ["completed_rounds", "average_mib_per_second"],
+      "additionalProperties": false,
+      "properties": {
+        "completed_rounds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "average_mib_per_second": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["upload", "download"],
+      "additionalProperties": false,
+      "properties": {
+        "upload": {
+          "$ref": "#/$defs/summaryTransfer"
+        },
+        "download": {
+          "$ref": "#/$defs/summaryTransfer"
+        }
+      }
+    },
+    "multiRoundResult": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseFields"
+        },
+        {
+          "type": "object",
+          "required": ["round_count", "rounds", "summary"],
+          "additionalProperties": false,
+          "properties": {
+            "ok": true,
+            "version": true,
+            "target": true,
+            "size": true,
+            "test_file": true,
+            "bytes": true,
+            "started_at": true,
+            "ended_at": true,
+            "round_count": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "rounds": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "$ref": "#/$defs/roundResult"
+              }
+            },
+            "summary": {
+              "$ref": "#/$defs/summary"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
