@@ -13,8 +13,11 @@
 - 人类可读的关键事件输出和 JSON 输出。
 - 支持上传/下载中断后的部分结果统计。
 - 支持 `--rounds` 多轮测速和完成轮次平均值。
+- 支持 `--remote-file-method auto|truncate|dd` 控制远端测试文件生成方式。
 - 带项目地址、适合分享截图的结果卡片。
 - 运行时失败时输出带项目地址的失败卡片。
+- `--json` 运行时失败会输出结构化 `ok:false` 错误对象。
+- 一行安装脚本和 `make dist` 打包目标。
 - 使用 fake command fixture 的本地单元测试。
 - Makefile 和 GitHub Actions CI。
 - 默认英文 README 和中文 README。

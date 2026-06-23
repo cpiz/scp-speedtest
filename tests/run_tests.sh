@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT="${ROOT_DIR}/scp-speedtest.sh"
+INSTALL_SCRIPT="${ROOT_DIR}/install.sh"
 
 PASS_COUNT=0
 
@@ -144,6 +145,13 @@ test_rounds_dry_run() {
   output="$(bash "$SCRIPT" my-vps --rounds 3 --dry-run)"
 
   assert_contains "$output" "Rounds: 3" "dry run prints requested rounds"
+}
+
+test_remote_file_method_dry_run() {
+  local output
+  output="$(bash "$SCRIPT" my-vps --remote-file-method dd --dry-run)"
+
+  assert_contains "$output" "Remote file method: dd" "dry run prints remote file method"
 }
 
 test_requires_bash() {
@@ -358,6 +366,20 @@ EOF
   chmod +x "${bin_dir}/ssh" "${bin_dir}/scp"
 }
 
+make_fake_failing_ssh_fixture() {
+  local fixture_dir="$1"
+  local bin_dir="${fixture_dir}/bin"
+  mkdir -p "$bin_dir"
+
+  cat >"${bin_dir}/ssh" <<'EOF'
+#!/usr/bin/env bash
+printf 'Connection closed by 127.0.0.1 port 7892\n' >&2
+exit 255
+EOF
+
+  chmod +x "${bin_dir}/ssh"
+}
+
 test_fake_ssh_scp_full_flow_json() {
   local fixture_dir output
   fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/scp-speedtest-test.XXXXXX")"
@@ -370,6 +392,27 @@ test_fake_ssh_scp_full_flow_json() {
   assert_contains "$output" '"remote_generator":{"status":"completed","method":"truncate"}' "fake full flow records remote generator"
   assert_contains "$output" '"upload":{"status":"completed","bytes":1048576' "fake full flow records completed upload"
   assert_contains "$output" '"download":{"status":"completed","bytes":1048576' "fake full flow records completed download"
+
+  rm -rf "$fixture_dir"
+}
+
+test_fake_ssh_failure_json() {
+  local fixture_dir output status
+  fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/scp-speedtest-test.XXXXXX")"
+  make_fake_failing_ssh_fixture "$fixture_dir"
+
+  set +e
+  output="$(PATH="${fixture_dir}/bin:$PATH" bash "$SCRIPT" fake-host --size 1M --json --quiet 2>/dev/null)"
+  status=$?
+  set -e
+
+  [[ "$status" -eq 255 ]] || fail "JSON failure should preserve ssh exit code. Status: ${status}. Output: ${output}"
+  assert_contains "$output" '"ok":false' "JSON failure marks result not ok"
+  assert_contains "$output" '"target":"fake-host"' "JSON failure includes target"
+  assert_contains "$output" '"test_file":"scp-speedtest-1M.bin"' "JSON failure includes test file"
+  assert_contains "$output" '"bytes":1048576' "JSON failure includes byte count"
+  assert_contains "$output" '"step":"Connecting and creating remote temporary directory: fake-host"' "JSON failure includes failed step"
+  assert_contains "$output" '"exit_code":255' "JSON failure includes exit code"
 
   rm -rf "$fixture_dir"
 }
@@ -406,6 +449,23 @@ test_invalid_arguments() {
 
   assert_fails_contains "rounds must be positive" "--rounds must be a positive integer" \
     bash "$SCRIPT" my-vps --rounds 0 --dry-run
+
+  assert_fails_contains "remote file method must be valid" "--remote-file-method must be auto, truncate, or dd" \
+    bash "$SCRIPT" my-vps --remote-file-method sparse --dry-run
+}
+
+test_install_script_local_install() {
+  local fixture_dir output installed_version
+  fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/scp-speedtest-install-test.XXXXXX")"
+
+  output="$(SCP_SPEEDTEST_LOCAL_SCRIPT="$SCRIPT" PREFIX="${fixture_dir}/prefix" bash "$INSTALL_SCRIPT")"
+  installed_version="$("${fixture_dir}/prefix/bin/scp-speedtest" --version)"
+
+  assert_contains "$output" "Installed scp-speedtest" "install script reports installed binary"
+  [[ "$installed_version" == "0.1.0" ]] || fail "installed script should print version 0.1.0. Actual: ${installed_version}"
+  pass "install script installs runnable binary"
+
+  rm -rf "$fixture_dir"
 }
 
 test_no_arguments_prints_help
@@ -417,13 +477,16 @@ test_quiet_option
 test_json_dry_run
 test_connection_options
 test_rounds_dry_run
+test_remote_file_method_dry_run
 test_requires_bash
 test_remote_scp_path_format
 test_partial_transfer_output
 test_error_result_output
 test_timeout_status_detection
 test_fake_ssh_scp_full_flow_json
+test_fake_ssh_failure_json
 test_fake_ssh_scp_multi_round_json
 test_invalid_arguments
+test_install_script_local_install
 
 printf 'All %d assertions passed.\n' "$PASS_COUNT"

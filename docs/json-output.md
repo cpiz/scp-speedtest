@@ -6,6 +6,7 @@ The JSON output has two shapes:
 
 - Single-round output keeps the original flat shape for compatibility.
 - Multi-round output uses a `rounds` array and a `summary` object.
+- Runtime failure output uses `ok:false` and an `error` object.
 
 The machine-readable schema is available at [`schemas/scp-speedtest-output.schema.json`](../schemas/scp-speedtest-output.schema.json).
 
@@ -74,3 +75,27 @@ Remote generator status values:
 - `skipped`
 
 Remote generator method is usually `truncate` or `dd` when generation completed.
+
+## Failure Output
+
+When `--json` is enabled and a runtime command fails after argument validation, the script still exits non-zero and prints a structured JSON object to stdout:
+
+```json
+{
+  "ok": false,
+  "version": "0.1.0",
+  "target": "my-vps",
+  "size": "100M",
+  "test_file": "scp-speedtest-100M.bin",
+  "bytes": 104857600,
+  "started_at": "2026-06-23T05:20:01Z",
+  "ended_at": "2026-06-23T05:20:03Z",
+  "error": {
+    "step": "Connecting and creating remote temporary directory: my-vps",
+    "exit_code": 255,
+    "message": "runtime command failed; see stderr for ssh/scp details"
+  }
+}
+```
+
+The underlying `ssh` or `scp` error remains on stderr.

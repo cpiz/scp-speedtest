@@ -26,7 +26,9 @@ MAX_DURATION=""
 ROUNDS=1
 SIZE="$DEFAULT_SIZE"
 SIZE_LABEL="$DEFAULT_SIZE"
+TEST_BYTES=0
 REMOTE_DIR=""
+REMOTE_FILE_METHOD="auto"
 LEGACY_SCP=0
 JSON_OUTPUT=0
 KEEP_FILES=0
@@ -118,6 +120,7 @@ Options:
   --ssh-option <Key=Value>       Extra ssh/scp -o option; can be repeated
   --size <100M|1G>               Test file size, default 100M
   --remote-dir <path>            Remote test directory, defaults to remote mktemp -d
+  --remote-file-method <method>  Remote file generator: auto, truncate, or dd
   --legacy-scp                   Enable legacy scp protocol with scp -O
   --json                         Print machine-readable JSON to stdout
   --keep                         Keep temporary files for troubleshooting
@@ -209,6 +212,11 @@ parse_args() {
         REMOTE_DIR="$2"
         shift 2
         ;;
+      --remote-file-method)
+        require_value "$1" "${2:-}"
+        REMOTE_FILE_METHOD="$2"
+        shift 2
+        ;;
       --legacy-scp)
         LEGACY_SCP=1
         shift
@@ -278,6 +286,10 @@ validate_args() {
   if [[ ! "$ROUNDS" =~ ^[0-9]+$ || "$ROUNDS" -lt 1 ]]; then
     die "--rounds must be a positive integer"
   fi
+  case "$REMOTE_FILE_METHOD" in
+    auto | truncate | dd) ;;
+    *) die "--remote-file-method must be auto, truncate, or dd" ;;
+  esac
   if [[ -n "$MAX_DURATION" ]] && ! command -v perl >/dev/null 2>&1 && ! command -v timeout >/dev/null 2>&1; then
     die "--max-duration requires perl or timeout"
   fi
@@ -580,7 +592,17 @@ generate_remote_test_file() {
   remainder=$((bytes % 1048576))
   build_ssh_cmd
 
-  remote_script="if command -v truncate >/dev/null 2>&1; then truncate -s ${bytes} ${quoted_file} && printf 'truncate\n'; else dd if=/dev/zero of=${quoted_file} bs=1048576 count=${mb} >/dev/null 2>&1; if [ ${remainder} -gt 0 ]; then dd if=/dev/zero bs=${remainder} count=1 >> ${quoted_file} 2>/dev/null; fi; printf 'dd\n'; fi"
+  case "$REMOTE_FILE_METHOD" in
+    auto)
+      remote_script="if command -v truncate >/dev/null 2>&1; then truncate -s ${bytes} ${quoted_file} && printf 'truncate\n'; else dd if=/dev/zero of=${quoted_file} bs=1048576 count=${mb} >/dev/null 2>&1; if [ ${remainder} -gt 0 ]; then dd if=/dev/zero bs=${remainder} count=1 >> ${quoted_file} 2>/dev/null; fi; printf 'dd\n'; fi"
+      ;;
+    truncate)
+      remote_script="if command -v truncate >/dev/null 2>&1; then truncate -s ${bytes} ${quoted_file} && printf 'truncate\n'; else printf 'truncate is not available on remote host\n' >&2; exit 127; fi"
+      ;;
+    dd)
+      remote_script="dd if=/dev/zero of=${quoted_file} bs=1048576 count=${mb} >/dev/null 2>&1; if [ ${remainder} -gt 0 ]; then dd if=/dev/zero bs=${remainder} count=1 >> ${quoted_file} 2>/dev/null; fi; printf 'dd\n'"
+      ;;
+  esac
   REMOTE_GENERATOR="$("${SSH_CMD[@]}" "$REMOTE_SPEC" "$remote_script")"
   REMOTE_GENERATOR_STATUS="completed"
 }
@@ -626,7 +648,11 @@ cleanup() {
     [[ -z "$REMOTE_TMP_DIR" ]] || printf 'Kept remote temporary directory: %s\n' "$REMOTE_TMP_DIR" >&2
   fi
   if [[ "$exit_code" -ne 0 && "$ERROR_CARD_PRINTED" -eq 0 && -n "$REMOTE_SPEC" ]]; then
-    print_error_result "$exit_code" >&2
+    if ((JSON_OUTPUT == 1)); then
+      print_json_error_result "$exit_code"
+    else
+      print_error_result "$exit_code" >&2
+    fi
     ERROR_CARD_PRINTED=1
   fi
   return "$exit_code"
@@ -767,6 +793,29 @@ print_error_result() {
   print_result_rule
 }
 
+print_json_error_result() {
+  local exit_code="$1"
+  local started_at="$STARTED_AT"
+  local ended_at="$ENDED_AT"
+  [[ -n "$ended_at" ]] || ended_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+  printf '{'
+  printf '"ok":false,'
+  printf '"version":"%s",' "$(json_escape "$VERSION")"
+  printf '"target":"%s",' "$(json_escape "$REMOTE_SPEC")"
+  printf '"size":"%s",' "$(json_escape "$SIZE")"
+  printf '"test_file":"%s",' "$(json_escape "$TEST_FILE_NAME")"
+  printf '"bytes":%s,' "$TEST_BYTES"
+  printf '"started_at":"%s",' "$(json_escape "$started_at")"
+  printf '"ended_at":"%s",' "$(json_escape "$ended_at")"
+  printf '"error":{'
+  printf '"step":"%s",' "$(json_escape "$CURRENT_STEP")"
+  printf '"exit_code":%s,' "$exit_code"
+  printf '"message":"%s"' "$(json_escape "runtime command failed; see stderr for ssh/scp details")"
+  printf '}'
+  printf '}\n'
+}
+
 print_json_result() {
   local bytes="$1"
 
@@ -905,6 +954,7 @@ print_dry_run() {
     printf '"test_file":"%s",' "$(json_escape "$TEST_FILE_NAME")"
     printf '"bytes":%s,' "$bytes"
     printf '"rounds":%s,' "$ROUNDS"
+    printf '"remote_file_method":"%s",' "$(json_escape "$REMOTE_FILE_METHOD")"
     printf '"ssh_command":"%s",' "$(json_escape "$(command_to_string "${SSH_CMD[@]}" "$REMOTE_SPEC")")"
     printf '"scp_command":"%s"' "$(json_escape "$(command_to_string "${SCP_CMD[@]}")")"
     printf '}\n'
@@ -912,6 +962,7 @@ print_dry_run() {
     printf 'Target: %s\n' "$REMOTE_SPEC"
     printf 'Test file: %s (%s bytes)\n' "$TEST_FILE_NAME" "$bytes"
     printf 'Rounds: %s\n' "$ROUNDS"
+    printf 'Remote file method: %s\n' "$REMOTE_FILE_METHOD"
     printf 'SSH command: %s\n' "$(command_to_string "${SSH_CMD[@]}" "$REMOTE_SPEC")"
     printf 'SCP command: %s\n' "$(command_to_string "${SCP_CMD[@]}")"
   fi
@@ -1064,6 +1115,7 @@ main() {
 
   local bytes
   bytes="$(parse_size_to_bytes "$SIZE")"
+  TEST_BYTES="$bytes"
 
   if ((DRY_RUN == 1)); then
     print_dry_run "$bytes"

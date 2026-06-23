@@ -28,6 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/main/scp-speedte
 ```
 
 长期使用建议先下载脚本并审阅内容，再执行。
+等发布 tag 可用后，建议把 `main` 替换为 `v0.1.0` 这类固定版本号。
 
 等价的显式写法：
 
@@ -55,6 +56,18 @@ curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/main/scp-speedte
 
 ## 安装
 
+一行命令安装：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/main/install.sh | bash
+```
+
+安装到用户可写目录：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/main/install.sh | PREFIX="$HOME/.local" bash
+```
+
 直接安装到 `/usr/local/bin/scp-speedtest`：
 
 ```bash
@@ -71,6 +84,12 @@ make install PREFIX="$HOME/.local"
 
 ```bash
 sudo make uninstall
+```
+
+构建发布用 tarball：
+
+```bash
+make dist
 ```
 
 ## 常用参数
@@ -91,6 +110,7 @@ sudo make uninstall
 --ssh-option <Key=Value>       Extra ssh/scp -o option; can be repeated
 --size <100M|1G>               Test file size, default 100M
 --remote-dir <path>            Remote test directory, defaults to remote mktemp -d
+--remote-file-method <method>  Remote file generator: auto, truncate, or dd
 --legacy-scp                   Enable legacy scp protocol with scp -O
 --json                         Print machine-readable JSON to stdout
 --keep                         Keep temporary files for troubleshooting
@@ -181,6 +201,22 @@ Download: completed, 104857600 / 104857600 bytes, 9.500000 seconds, 10.53 MiB/s
 
 JSON 输出中，单轮结果保持原来的扁平结构以维持兼容性；多轮结果会使用 `rounds` 数组和 `summary` 对象。
 
+## 远端文件生成
+
+下载测速需要在远端准备一个同等大小的文件。默认 `--remote-file-method auto` 会优先使用 `truncate`，不可用时回退到 `dd`。
+
+如果你希望远端文件真实写满零字节，而不是稀疏文件，可以使用 `--remote-file-method dd`。这样更接近真实远端磁盘读取，但会增加下载测速开始前的准备时间。
+
+如果你明确希望快速生成稀疏文件，并且远端没有 `truncate` 时直接失败，可以使用 `--remote-file-method truncate`。
+
+## 结果如何解读
+
+- 上传和下载可能差异很大，因为路由、云厂商出入站策略、CPU、加密算法和存储路径都可能不对称。
+- `scp-speedtest` 测的是实际 `scp` 应用层吞吐，包含 SSH 加密和 `scp` 协议开销，因此通常会和 `iperf3` 不同。
+- 中断或超时结果仍然有参考价值，适合判断链路是否明显过慢；结果里会显示已传输字节、耗时和中断前观测到的速度。
+- 多轮平均值只统计完整完成的轮次；中断轮次仍会保留在每轮结果中。
+- 如果下载明显慢于上传，可以尝试 `--remote-file-method dd`，避免稀疏远端文件影响对比。
+
 ## 准确性说明
 
 这个工具测量的是 `scp` 实际应用层吞吐量，不是裸 TCP 带宽。结果会受到以下因素影响：
@@ -201,6 +237,7 @@ JSON 输出中，单轮结果保持原来的扁平结构以维持兼容性；多
 - 如果需要检查命令拼装但不想连接远端，可以使用 `--dry-run`。
 - 如果需要关闭中间事件和 `scp` 进度条，可以使用 `--quiet`。
 - 如果链路很慢但不想手动中断，可以使用 `--max-duration <seconds>`。
+- 如果远端稀疏文件可能让下载结果不够有代表性，可以使用 `--remote-file-method dd`。
 - 运行时失败会输出最终失败卡片，包含目标、失败步骤、退出码和项目地址。
 
 ## 本地验证

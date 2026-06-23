@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install shell tooling
         if: runner.os == 'Linux'
@@ -33,13 +33,14 @@ jobs:
       - name: Syntax check
         run: |
           bash -n scp-speedtest.sh
+          bash -n install.sh
           bash -n tests/run_tests.sh
 
       - name: Unit tests
         run: tests/run_tests.sh
 
       - name: ShellCheck
-        run: shellcheck scp-speedtest.sh tests/run_tests.sh
+        run: shellcheck scp-speedtest.sh install.sh tests/run_tests.sh
 
       - name: Format check
-        run: shfmt -d -i 2 -ci scp-speedtest.sh tests/run_tests.sh
+        run: shfmt -d -i 2 -ci scp-speedtest.sh install.sh tests/run_tests.sh

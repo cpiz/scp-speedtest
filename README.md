@@ -28,6 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/main/scp-speedte
 ```
 
 For regular use, download the script first and review it before running.
+After tagged releases are available, prefer replacing `main` with a version tag such as `v0.1.0`.
 
 Equivalent explicit target syntax:
 
@@ -55,6 +56,18 @@ Run multiple rounds and print averages:
 
 ## Installation
 
+One-line install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/main/install.sh | bash
+```
+
+Install to a user-writable prefix:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/main/install.sh | PREFIX="$HOME/.local" bash
+```
+
 Install to `/usr/local/bin/scp-speedtest`:
 
 ```bash
@@ -71,6 +84,12 @@ Uninstall:
 
 ```bash
 sudo make uninstall
+```
+
+Build a release-style tarball:
+
+```bash
+make dist
 ```
 
 ## Options
@@ -91,6 +110,7 @@ sudo make uninstall
 --ssh-option <Key=Value>       Extra ssh/scp -o option; can be repeated
 --size <100M|1G>               Test file size, default 100M
 --remote-dir <path>            Remote test directory, defaults to remote mktemp -d
+--remote-file-method <method>  Remote file generator: auto, truncate, or dd
 --legacy-scp                   Enable legacy scp protocol with scp -O
 --json                         Print machine-readable JSON to stdout
 --keep                         Keep temporary files for troubleshooting
@@ -181,6 +201,22 @@ Each round creates fresh local and remote temporary files and cleans them up bef
 
 For JSON output, single-round output keeps the original flat shape for compatibility. Multi-round JSON uses a `rounds` array plus a `summary` object.
 
+## Remote File Generation
+
+Download tests require a same-size file on the remote host. By default, `--remote-file-method auto` uses `truncate` when available and falls back to `dd`.
+
+Use `--remote-file-method dd` when you want the remote file to be fully written with zero bytes instead of being sparse. This can better represent remote disk reads, but it increases preparation time before the download test starts.
+
+Use `--remote-file-method truncate` when you explicitly want fast sparse-file generation and prefer the command to fail if `truncate` is unavailable.
+
+## Interpreting Results
+
+- Upload and download can differ substantially because routes, cloud egress policy, CPU, ciphers, and storage paths are not symmetric.
+- `scp-speedtest` measures real `scp` application-level throughput. It includes SSH encryption and `scp` protocol overhead, so it will usually differ from `iperf3`.
+- Interrupted or timed-out transfers are still useful for spotting obviously slow links. They show transferred bytes, elapsed seconds, and observed throughput up to the interruption.
+- Multi-round averages include completed rounds only. Interrupted rounds stay visible in per-round output.
+- If a download looks much slower than upload, try `--remote-file-method dd` to avoid sparse remote files and compare again.
+
 ## Accuracy Notes
 
 This tool measures actual `scp` application-level throughput, not raw TCP bandwidth. Results can be affected by:
@@ -201,6 +237,7 @@ If you need raw network capacity, `iperf3` is a better fit. If you care about re
 - Use `--dry-run` to inspect command construction without connecting to the remote host.
 - Use `--quiet` to hide progress events and the `scp` progress bar.
 - Use `--max-duration <seconds>` when a link is slow and you want a transfer timeout instead of a manual interrupt.
+- Use `--remote-file-method dd` when remote sparse files may make download results less representative.
 - Runtime failures print a final failure card with the target, failed step, exit code, and project URL.
 
 ## Local Verification
