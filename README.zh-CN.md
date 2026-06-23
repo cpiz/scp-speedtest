@@ -1,14 +1,14 @@
 # scp-speedtest
 
-[中文文档](README.zh-CN.md)
+[English README](README.md)
 
-A Bash CLI that measures bidirectional network throughput with `scp`. It creates fixed-size test files on both the local and remote sides: the local file is used for upload testing, and the remote file is used for download testing, so the two directions are measured independently.
+一个使用 `scp` 做网络双向测速的 Bash 脚本。它会在本地和远端分别生成固定大小的测试文件：本地文件用于上传测速，远端文件用于下载测速，两个方向互不依赖。
 
-The default test file size is `100M`. Authentication, keys, jump hosts, SSH config, and prompts are handled by the system `ssh/scp` commands.
+默认测试文件大小为 `100M`。认证、密钥、跳板机、SSH config 等能力都交给系统自带的 `ssh/scp` 处理。
 
-## Quick Start
+## 快速开始
 
-Run the script without arguments to print usage, options, and examples:
+直接运行脚本会显示参数说明和示例：
 
 ```bash
 ./scp-speedtest.sh
@@ -19,47 +19,47 @@ chmod +x scp-speedtest.sh
 ./scp-speedtest.sh my-vps
 ```
 
-`my-vps` can be a `Host` alias from `~/.ssh/config` or a regular hostname.
+其中 `my-vps` 可以是 `~/.ssh/config` 里的 Host alias，也可以是普通主机名。
 
-Equivalent explicit target syntax:
+等价的显式写法：
 
 ```bash
 ./scp-speedtest.sh --target my-vps
 ```
 
-Specify connection settings directly:
+直接指定连接配置：
 
 ```bash
 ./scp-speedtest.sh --host 1.2.3.4 --user root --port 2222 --identity-file ~/.ssh/id_ed25519
 ```
 
-Use a larger test file and print JSON:
+指定更大的测试文件并输出 JSON：
 
 ```bash
 ./scp-speedtest.sh my-vps --size 1G --json
 ```
 
-## Installation
+## 安装
 
-Install to `/usr/local/bin/scp-speedtest`:
+直接安装到 `/usr/local/bin/scp-speedtest`：
 
 ```bash
 sudo make install
 ```
 
-Install to a custom prefix:
+指定安装路径：
 
 ```bash
 make install PREFIX="$HOME/.local"
 ```
 
-Uninstall:
+卸载：
 
 ```bash
 sudo make uninstall
 ```
 
-## Options
+## 常用参数
 
 ```text
 ./scp-speedtest.sh [alias-or-host] [options]
@@ -85,9 +85,9 @@ sudo make uninstall
 --version                      Show version
 ```
 
-## Output Examples
+## 输出示例
 
-Human-readable output:
+普通输出：
 
 ```text
 [13:20:01] Target: my-vps
@@ -111,64 +111,64 @@ Upload: completed, 104857600 / 104857600 bytes, 6.746740 seconds, 14.82 MiB/s
 Download: completed, 104857600 / 104857600 bytes, 7.041432 seconds, 14.20 MiB/s
 ```
 
-JSON output:
+JSON 输出：
 
 ```json
 {"ok":true,"version":"0.1.0","target":"my-vps","size":"100M","test_file":"scp-speedtest-100M.bin","bytes":104857600,"started_at":"2026-06-23T05:20:01Z","ended_at":"2026-06-23T05:20:16Z","remote_dir":"/tmp/scp-speedtest.xxxxxx","remote_generator":{"status":"completed","method":"truncate"},"upload":{"status":"completed","bytes":104857600,"seconds":6.746740,"mib_per_second":14.82},"download":{"status":"completed","bytes":104857600,"seconds":7.041432,"mib_per_second":14.20}}
 ```
 
-## How It Works
+## 工作方式
 
-1. Create an upload test file in a local temporary directory.
-2. Create a remote temporary directory with `ssh`, or use the directory passed with `--remote-dir`.
-3. Create a same-size download test file on the remote host.
-4. Upload the local test file with `scp` and measure elapsed time.
-5. Download the remote test file with `scp` and measure elapsed time.
-6. Verify the completed download with a SHA-256 checksum.
-7. Clean up local and remote temporary files by default.
+1. 在本地临时目录生成指定大小的上传测试文件。
+2. 使用 `ssh` 在远端创建临时目录，或使用 `--remote-dir` 指定的目录。
+3. 在远端生成同样大小的下载测试文件。
+4. 使用 `scp` 上传本地测试文件并计时。
+5. 使用 `scp` 下载远端测试文件并计时。
+6. 对完整下载文件做 SHA-256 checksum 校验。
+7. 默认清理本地和远端临时文件。
 
-Checksum verification is not included in upload or download timing.
+checksum 校验不计入上传或下载耗时。
 
-Progress events and the native `scp` progress output are written to stderr. Final results and JSON output are written to stdout. Use `--quiet` for quiet mode.
+关键事件和 `scp` 自带进度输出写到 stderr；最终结果和 JSON 写到 stdout。需要安静运行时可以加 `--quiet`。
 
-## Interrupt Handling
+## 中断处理
 
-Pressing `Ctrl-C` during a transfer interrupts the current `scp` stage, but the script continues with the next stage and prints the data collected so far:
+传输过程中按 `Ctrl-C` 会中断当前 `scp` 阶段，但脚本会继续执行后续阶段并输出已收集的数据：
 
-- Interrupted upload: the script records the remote uploaded file size, then continues to download the independently generated full remote test file.
-- Interrupted download: the script records the local downloaded file size, then proceeds to cleanup and result output.
-- Checksum verification is skipped when the download is incomplete. If only the upload was interrupted and the download completes, the download is still verified.
-- Cleanup still attempts to remove the local temporary directory, remote test file, and remote temporary directory.
+- 上传阶段中断：脚本会查询远端上传目标文件已写入大小，然后继续下载远端预先生成的完整测试文件。
+- 下载阶段中断：脚本会读取本地已下载文件大小，并进入清理和结果输出。
+- 下载未完整完成时，checksum 校验会跳过；如果只是上传中断但下载完整完成，仍会校验下载文件。
+- 清理阶段仍会尽量删除本地临时目录、远端测试文件和远端临时目录。
 
-Partial transfer example:
+部分传输输出示例：
 
 ```text
 Upload: interrupted, 11534336 / 104857600 bytes, 21.000000 seconds, 0.52 MiB/s
 Download: completed, 104857600 / 104857600 bytes, 9.500000 seconds, 10.53 MiB/s
 ```
 
-## Accuracy Notes
+## 准确性说明
 
-This tool measures actual `scp` application-level throughput, not raw TCP bandwidth. Results can be affected by:
+这个工具测量的是 `scp` 实际应用层吞吐量，不是裸 TCP 带宽。结果会受到以下因素影响：
 
-- SSH ciphers and local/remote CPU.
-- Whether `scp` uses SFTP mode or legacy scp mode.
-- Local and remote disk or filesystem performance.
-- Cloud provider throttling, QoS, and route instability.
-- SSH config options such as ProxyJump, ProxyCommand, IPQoS, and Compression.
+- SSH 加密算法和本地/远端 CPU。
+- `scp` 当前使用的 SFTP 或 legacy scp 协议。
+- 本地和远端磁盘/文件系统性能。
+- 远端云厂商限速、QoS、跨境链路抖动。
+- SSH config 中的 ProxyJump、ProxyCommand、IPQoS、Compression 等选项。
 
-If you need raw network capacity, `iperf3` is a better fit. If you care about real-world `scp` file transfer behavior, this tool is closer to that workload.
+如果你需要纯网络链路上限，`iperf3` 更合适；如果你关心“真实 scp 文件传输体验”，这个工具更贴近实际。
 
-## Notes
+## 注意事项
 
-- This tool measures `scp` transfer throughput, not raw network bandwidth.
-- Passwords are not accepted or stored by the script. Use SSH agent, keys, SSH config, or the native `ssh/scp` prompt.
-- Use `--legacy-scp` for servers that require the old scp protocol.
-- Use `--dry-run` to inspect command construction without connecting to the remote host.
-- Use `--quiet` to hide progress events and the `scp` progress bar.
-- Use `--max-duration <seconds>` when a link is slow and you want a transfer timeout instead of a manual interrupt.
+- 这个工具测的是 `scp` 实际传输吞吐量，不等同于裸网络带宽。
+- 不支持在脚本中传入或保存密码；请使用 SSH agent、密钥、SSH config 或 `ssh/scp` 自身交互。
+- 如果远端服务器只支持旧版 scp 协议，可以加 `--legacy-scp`。
+- 如果需要检查命令拼装但不想连接远端，可以使用 `--dry-run`。
+- 如果需要关闭中间事件和 `scp` 进度条，可以使用 `--quiet`。
+- 如果链路很慢但不想手动中断，可以使用 `--max-duration <seconds>`。
 
-## Local Verification
+## 本地验证
 
 ```bash
 make test
@@ -176,7 +176,7 @@ make lint
 make format-check
 ```
 
-Equivalent manual commands:
+等价的手动命令：
 
 ```bash
 bash -n scp-speedtest.sh
@@ -184,15 +184,15 @@ bash -n tests/run_tests.sh
 tests/run_tests.sh
 ```
 
-If `shellcheck` is installed:
+如果本机安装了 `shellcheck`，可以额外运行：
 
 ```bash
 shellcheck scp-speedtest.sh tests/run_tests.sh
 ```
 
-## Development And Release
+## 开发与发布
 
-- CI runs on Ubuntu and macOS.
-- Update `CHANGELOG.md` before release.
-- The version is maintained in `VERSION` near the top of `scp-speedtest.sh`.
-- The project is MIT licensed. See `LICENSE`.
+- CI 覆盖 Ubuntu 和 macOS。
+- 发布前更新 `CHANGELOG.md`。
+- 版本号在 `scp-speedtest.sh` 顶部的 `VERSION` 中维护。
+- 当前许可证为 MIT，见 `LICENSE`。
