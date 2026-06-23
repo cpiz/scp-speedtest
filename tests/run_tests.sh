@@ -58,7 +58,7 @@ test_no_arguments_prints_help() {
 
   [[ "$status" -eq 0 ]] || fail "no arguments should print help and exit 0. Status: ${status}. Output: ${output}"
   assert_contains "$output" "Usage:" "no arguments prints usage"
-  assert_contains "$output" "Version: 1.0.1" "no arguments prints version"
+  assert_contains "$output" "Version: 1.0.2" "no arguments prints version"
   assert_contains "$output" "Options:" "no arguments prints options"
   assert_contains "$output" "Examples:" "no arguments prints examples"
   assert_contains "$output" "GitHub: https://github.com/cpiz/scp-speedtest" "no arguments prints project URL"
@@ -70,7 +70,8 @@ test_default_size_and_positional_target() {
 
   assert_contains "$output" "Target: my-vps" "positional target is accepted"
   assert_contains "$output" "Test file: scp-speedtest-100M.bin (104857600 bytes)" "default test file name includes 100M"
-  assert_contains "$output" "SSH command: ssh my-vps" "default SSH command uses alias"
+  assert_contains "$output" "SSH command: ssh" "default SSH command is printed"
+  assert_contains "$output" "my-vps" "default SSH command uses alias"
   assert_contains "$output" "SCP command: scp" "default SCP command is not quiet"
   assert_not_contains "$output" "SCP command: scp -q" "default SCP command allows progress output"
 }
@@ -89,7 +90,35 @@ test_stdin_execution() {
 
   assert_contains "$output" "Target: my-vps" "stdin execution accepts positional target"
   assert_contains "$output" "Test file: scp-speedtest-100M.bin (104857600 bytes)" "stdin execution keeps default test file size"
-  assert_contains "$output" "SSH command: ssh my-vps" "stdin execution builds SSH command"
+  assert_contains "$output" "SSH command: ssh" "stdin execution builds SSH command"
+  assert_contains "$output" "my-vps" "stdin execution uses positional target"
+}
+
+test_default_suppresses_weak_crypto_warning() {
+  local fixture_dir output
+  fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/scp-speedtest-test.XXXXXX")"
+  mkdir -p "${fixture_dir}/bin"
+
+  cat >"${fixture_dir}/bin/ssh" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"-G"* && "$*" == *"WarnWeakCrypto=no"* ]]; then
+  exit 0
+fi
+exit 1
+EOF
+  chmod +x "${fixture_dir}/bin/ssh"
+
+  output="$(PATH="${fixture_dir}/bin:$PATH" bash "$SCRIPT" my-vps --dry-run)"
+  assert_contains "$output" "-o WarnWeakCrypto=no" "default SSH/SCP commands suppress weak crypto warnings when supported"
+
+  output="$(PATH="${fixture_dir}/bin:$PATH" bash "$SCRIPT" my-vps --show-ssh-warnings --dry-run)"
+  assert_not_contains "$output" "WarnWeakCrypto=no" "--show-ssh-warnings disables default warning suppression"
+
+  output="$(PATH="${fixture_dir}/bin:$PATH" bash "$SCRIPT" my-vps --ssh-option WarnWeakCrypto=yes --dry-run)"
+  assert_contains "$output" "-o WarnWeakCrypto=yes" "explicit WarnWeakCrypto option is preserved"
+  assert_not_contains "$output" "-o WarnWeakCrypto=no" "explicit WarnWeakCrypto option overrides default suppression"
+
+  rm -rf "$fixture_dir"
 }
 
 test_size_specific_filename() {
@@ -132,7 +161,7 @@ test_quiet_option() {
 
 test_json_dry_run() {
   local output
-  output="$(bash "$SCRIPT" my-vps --size 1G --json --dry-run)"
+  output="$(bash "$SCRIPT" my-vps --size 1G --json --show-ssh-warnings --dry-run)"
 
   assert_contains "$output" '"target":"my-vps"' "JSON output includes target"
   assert_contains "$output" '"size":"1G"' "JSON output includes size"
@@ -471,7 +500,7 @@ test_install_script_local_install() {
   installed_version="$("${fixture_dir}/prefix/bin/scp-speedtest" --version)"
 
   assert_contains "$output" "Installed scp-speedtest" "install script reports installed binary"
-  [[ "$installed_version" == "1.0.1" ]] || fail "installed script should print version 1.0.1. Actual: ${installed_version}"
+  [[ "$installed_version" == "1.0.2" ]] || fail "installed script should print version 1.0.2. Actual: ${installed_version}"
   pass "install script installs runnable binary"
 
   rm -rf "$fixture_dir"
@@ -481,6 +510,7 @@ test_no_arguments_prints_help
 test_default_size_and_positional_target
 test_target_option
 test_stdin_execution
+test_default_suppresses_weak_crypto_warning
 test_size_specific_filename
 test_explicit_connection_options
 test_quiet_option

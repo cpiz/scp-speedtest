@@ -10,7 +10,7 @@ fi
 
 set -euo pipefail
 
-VERSION="1.0.1"
+VERSION="1.0.2"
 DEFAULT_SIZE="100M"
 PROJECT_URL="https://github.com/cpiz/scp-speedtest"
 
@@ -34,10 +34,12 @@ JSON_OUTPUT=0
 KEEP_FILES=0
 DRY_RUN=0
 QUIET=0
+SHOW_SSH_WARNINGS=0
 POSITIONAL_TARGET=""
 SSH_OPTIONS=()
 SSH_CMD=()
 SCP_CMD=()
+WARN_WEAK_CRYPTO_SUPPORTED=""
 
 LOCAL_TMP_DIR=""
 LOCAL_DOWNLOAD_DIR=""
@@ -102,7 +104,7 @@ Usage:
 
 Description:
   Measure upload and download throughput with scp.
-  Version: 1.0.1
+  Version: 1.0.2
   Authentication is handled by ssh/scp; this script does not store passwords.
   GitHub: https://github.com/cpiz/scp-speedtest
 
@@ -125,6 +127,7 @@ Options:
   --json                         Print machine-readable JSON to stdout
   --keep                         Keep temporary files for troubleshooting
   --quiet                        Hide progress events and run scp in quiet mode
+  --show-ssh-warnings            Show ssh/scp security warnings that are suppressed by default
   --dry-run                      Show resolved commands without running the test
   -h, --help                     Show help
   --version                      Show version
@@ -231,6 +234,10 @@ parse_args() {
         ;;
       --quiet)
         QUIET=1
+        shift
+        ;;
+      --show-ssh-warnings)
+        SHOW_SSH_WARNINGS=1
         shift
         ;;
       --dry-run)
@@ -509,6 +516,41 @@ calc_average_completed_mibps() {
   calc_mibps $((count * bytes)) "$seconds"
 }
 
+has_ssh_option_key() {
+  local wanted="$1"
+  local opt key
+  wanted="$(printf '%s' "$wanted" | tr '[:upper:]' '[:lower:]')"
+
+  for opt in "${SSH_OPTIONS[@]+"${SSH_OPTIONS[@]}"}"; do
+    key="${opt%%=*}"
+    key="$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]')"
+    [[ "$key" == "$wanted" ]] && return 0
+  done
+
+  return 1
+}
+
+ssh_supports_warn_weak_crypto() {
+  if [[ -n "$WARN_WEAK_CRYPTO_SUPPORTED" ]]; then
+    [[ "$WARN_WEAK_CRYPTO_SUPPORTED" == "1" ]]
+    return
+  fi
+
+  if ssh -F /dev/null -G -o WarnWeakCrypto=no __scp_speedtest_probe__ >/dev/null 2>&1; then
+    WARN_WEAK_CRYPTO_SUPPORTED=1
+  else
+    WARN_WEAK_CRYPTO_SUPPORTED=0
+  fi
+
+  [[ "$WARN_WEAK_CRYPTO_SUPPORTED" == "1" ]]
+}
+
+should_suppress_ssh_warnings() {
+  ((SHOW_SSH_WARNINGS == 0)) || return 1
+  has_ssh_option_key "WarnWeakCrypto" && return 1
+  ssh_supports_warn_weak_crypto
+}
+
 build_ssh_cmd() {
   SSH_CMD=(ssh)
   [[ -z "$SSH_CONFIG" ]] || SSH_CMD+=(-F "$SSH_CONFIG")
@@ -516,6 +558,7 @@ build_ssh_cmd() {
   [[ -z "$IDENTITY_FILE" ]] || SSH_CMD+=(-i "$IDENTITY_FILE")
   [[ -z "$JUMP_HOST" ]] || SSH_CMD+=(-J "$JUMP_HOST")
   [[ -z "$CONNECT_TIMEOUT" ]] || SSH_CMD+=(-o "ConnectTimeout=${CONNECT_TIMEOUT}")
+  should_suppress_ssh_warnings && SSH_CMD+=(-o "WarnWeakCrypto=no")
   local opt
   for opt in "${SSH_OPTIONS[@]+"${SSH_OPTIONS[@]}"}"; do
     SSH_CMD+=(-o "$opt")
@@ -531,6 +574,7 @@ build_scp_cmd() {
   [[ -z "$IDENTITY_FILE" ]] || SCP_CMD+=(-i "$IDENTITY_FILE")
   [[ -z "$JUMP_HOST" ]] || SCP_CMD+=(-J "$JUMP_HOST")
   [[ -z "$CONNECT_TIMEOUT" ]] || SCP_CMD+=(-o "ConnectTimeout=${CONNECT_TIMEOUT}")
+  should_suppress_ssh_warnings && SCP_CMD+=(-o "WarnWeakCrypto=no")
   local opt
   for opt in "${SSH_OPTIONS[@]+"${SSH_OPTIONS[@]}"}"; do
     SCP_CMD+=(-o "$opt")

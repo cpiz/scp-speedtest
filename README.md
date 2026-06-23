@@ -35,7 +35,7 @@ chmod +x scp-speedtest.sh
 Run directly from GitHub for a one-off test:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.0.1/scp-speedtest.sh | bash -s -- my-vps
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.0.2/scp-speedtest.sh | bash -s -- my-vps
 ```
 
 For regular use, download the script first and review it before running.
@@ -70,13 +70,13 @@ Run multiple rounds and print averages:
 One-line install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.0.1/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.0.2/install.sh | bash
 ```
 
 Install to a user-writable prefix:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.0.1/install.sh | PREFIX="$HOME/.local" bash
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.0.2/install.sh | PREFIX="$HOME/.local" bash
 ```
 
 Install to `/usr/local/bin/scp-speedtest`:
@@ -126,6 +126,7 @@ make dist
 --json                         Print machine-readable JSON to stdout
 --keep                         Keep temporary files for troubleshooting
 --quiet                        Hide progress events and run scp in quiet mode
+--show-ssh-warnings            Show ssh/scp security warnings that are suppressed by default
 --dry-run                      Show resolved commands without running the test
 -h, --help                     Show help
 --version                      Show version
@@ -165,7 +166,7 @@ Download : COMPLETED       100.00 / 100.00    MiB    7.041432 s     14.20 MiB/s
 JSON output:
 
 ```json
-{"ok":true,"version":"1.0.1","target":"my-vps","size":"100M","test_file":"scp-speedtest-100M.bin","bytes":104857600,"started_at":"2026-06-23T05:20:01Z","ended_at":"2026-06-23T05:20:16Z","remote_dir":"/tmp/scp-speedtest.xxxxxx","remote_generator":{"status":"completed","method":"truncate"},"upload":{"status":"completed","bytes":104857600,"seconds":6.746740,"mib_per_second":14.82},"download":{"status":"completed","bytes":104857600,"seconds":7.041432,"mib_per_second":14.20}}
+{"ok":true,"version":"1.0.2","target":"my-vps","size":"100M","test_file":"scp-speedtest-100M.bin","bytes":104857600,"started_at":"2026-06-23T05:20:01Z","ended_at":"2026-06-23T05:20:16Z","remote_dir":"/tmp/scp-speedtest.xxxxxx","remote_generator":{"status":"completed","method":"truncate"},"upload":{"status":"completed","bytes":104857600,"seconds":6.746740,"mib_per_second":14.82},"download":{"status":"completed","bytes":104857600,"seconds":7.041432,"mib_per_second":14.20}}
 ```
 
 See [JSON Output Contract](docs/json-output.md) for the stable field contract and schema.
@@ -183,6 +184,8 @@ See [JSON Output Contract](docs/json-output.md) for the stable field contract an
 Checksum verification is not included in upload or download timing.
 
 Progress events and the native `scp` progress output are written to stderr. Final results and JSON output are written to stdout. Use `--quiet` for quiet mode.
+
+When supported by the local OpenSSH client, the script passes `WarnWeakCrypto=no` by default to keep repeated ssh/scp warnings from cluttering speed test output. Use `--show-ssh-warnings` to see those warnings.
 
 ## Interrupt Handling
 
