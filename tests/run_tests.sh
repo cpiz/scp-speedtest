@@ -58,7 +58,7 @@ test_no_arguments_prints_help() {
 
   [[ "$status" -eq 0 ]] || fail "no arguments should print help and exit 0. Status: ${status}. Output: ${output}"
   assert_contains "$output" "Usage:" "no arguments prints usage"
-  assert_contains "$output" "Version: 0.1.0" "no arguments prints version"
+  assert_contains "$output" "Version: 1.0.0" "no arguments prints version"
   assert_contains "$output" "Options:" "no arguments prints options"
   assert_contains "$output" "Examples:" "no arguments prints examples"
   assert_contains "$output" "GitHub: https://github.com/cpiz/scp-speedtest" "no arguments prints project URL"
@@ -462,7 +462,7 @@ test_install_script_local_install() {
   installed_version="$("${fixture_dir}/prefix/bin/scp-speedtest" --version)"
 
   assert_contains "$output" "Installed scp-speedtest" "install script reports installed binary"
-  [[ "$installed_version" == "0.1.0" ]] || fail "installed script should print version 0.1.0. Actual: ${installed_version}"
+  [[ "$installed_version" == "1.0.0" ]] || fail "installed script should print version 1.0.0. Actual: ${installed_version}"
   pass "install script installs runnable binary"
 
   rm -rf "$fixture_dir"

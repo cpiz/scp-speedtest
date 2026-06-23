@@ -24,11 +24,11 @@ chmod +x scp-speedtest.sh
 临时试用时，也可以直接从 GitHub 拉取并执行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/main/scp-speedtest.sh | bash -s -- my-vps
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.0.0/scp-speedtest.sh | bash -s -- my-vps
 ```
 
 长期使用建议先下载脚本并审阅内容，再执行。
-等发布 tag 可用后，建议把 `main` 替换为 `v0.1.0` 这类固定版本号。
+只有明确想使用最新开发版时，才建议把版本 tag 替换成 `main`。
 
 等价的显式写法：
 
@@ -59,13 +59,13 @@ curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/main/scp-speedte
 一行命令安装：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.0.0/install.sh | bash
 ```
 
 安装到用户可写目录：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/main/install.sh | PREFIX="$HOME/.local" bash
+curl -fsSL https://raw.githubusercontent.com/cpiz/scp-speedtest/v1.0.0/install.sh | PREFIX="$HOME/.local" bash
 ```
 
 直接安装到 `/usr/local/bin/scp-speedtest`：
@@ -154,7 +154,7 @@ Download : COMPLETED       100.00 / 100.00    MiB    7.041432 s     14.20 MiB/s
 JSON 输出：
 
 ```json
-{"ok":true,"version":"0.1.0","target":"my-vps","size":"100M","test_file":"scp-speedtest-100M.bin","bytes":104857600,"started_at":"2026-06-23T05:20:01Z","ended_at":"2026-06-23T05:20:16Z","remote_dir":"/tmp/scp-speedtest.xxxxxx","remote_generator":{"status":"completed","method":"truncate"},"upload":{"status":"completed","bytes":104857600,"seconds":6.746740,"mib_per_second":14.82},"download":{"status":"completed","bytes":104857600,"seconds":7.041432,"mib_per_second":14.20}}
+{"ok":true,"version":"1.0.0","target":"my-vps","size":"100M","test_file":"scp-speedtest-100M.bin","bytes":104857600,"started_at":"2026-06-23T05:20:01Z","ended_at":"2026-06-23T05:20:16Z","remote_dir":"/tmp/scp-speedtest.xxxxxx","remote_generator":{"status":"completed","method":"truncate"},"upload":{"status":"completed","bytes":104857600,"seconds":6.746740,"mib_per_second":14.82},"download":{"status":"completed","bytes":104857600,"seconds":7.041432,"mib_per_second":14.20}}
 ```
 
 稳定字段契约和 schema 见 [JSON Output Contract](docs/json-output.md)。
