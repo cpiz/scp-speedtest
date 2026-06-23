@@ -73,7 +73,7 @@ test_no_arguments_prints_help() {
 
   [[ "$status" -eq 0 ]] || fail "no arguments should print help and exit 0. Status: ${status}. Output: ${output}"
   assert_contains "$output" "Usage:" "no arguments prints usage"
-  assert_contains "$output" "Version: 1.1.1" "no arguments prints version"
+  assert_contains "$output" "Version: 1.1.2" "no arguments prints version"
   assert_contains "$output" "Options:" "no arguments prints options"
   assert_contains "$output" "Examples:" "no arguments prints examples"
   assert_contains "$output" "GitHub: https://github.com/cpiz/scp-speedtest" "no arguments prints project URL"
@@ -143,6 +143,34 @@ EOF
   rm -rf "$fixture_dir"
 }
 
+test_proxyjump_warning_suppression_uses_proxycommand() {
+  local fixture_dir output
+  fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/scp-speedtest-test.XXXXXX")"
+  mkdir -p "${fixture_dir}/bin"
+
+  cat >"${fixture_dir}/bin/ssh" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"-G"* && "$*" == *"WarnWeakCrypto=no"* ]]; then
+  exit 0
+fi
+if [[ "$*" == *"-G"* ]]; then
+  printf 'proxyjump jump-box\n'
+  exit 0
+fi
+exit 1
+EOF
+  chmod +x "${fixture_dir}/bin/ssh"
+
+  output="$(PATH="${fixture_dir}/bin:$PATH" bash "$SCRIPT" my-vps --dry-run)"
+
+  assert_contains "$output" "ProxyCommand=ssh" "detected ProxyJump is rewritten as ProxyCommand"
+  assert_contains "$output" "jump-box" "rewritten ProxyCommand targets the detected jump host"
+  assert_contains "$output" "LogLevel=ERROR" "rewritten ProxyCommand suppresses jump host warning output"
+  assert_contains "$output" "WarnWeakCrypto=no" "rewritten ProxyCommand suppresses jump host weak crypto warnings"
+
+  rm -rf "$fixture_dir"
+}
+
 test_size_specific_filename() {
   local output
   output="$(bash "$SCRIPT" my-vps --size 1G --dry-run)"
@@ -169,7 +197,8 @@ test_explicit_connection_options() {
   assert_contains "$output" "-p 2222" "SSH uses lowercase -p port"
   assert_contains "$output" "-P 2222" "SCP uses uppercase -P port"
   assert_contains "$output" "-i /tmp/id_ed25519" "includes identity file"
-  assert_contains "$output" "-J jump-box" "includes jump host"
+  assert_contains "$output" "ProxyCommand=ssh" "jump host is rewritten as ProxyCommand for warning suppression"
+  assert_contains "$output" "jump-box" "includes jump host"
   assert_contains "$output" "-o StrictHostKeyChecking=no" "includes custom SSH option"
   assert_contains "$output" "SCP command: scp -O" "legacy scp adds -O"
 }
@@ -537,7 +566,7 @@ test_install_script_local_install() {
   installed_version="$("${fixture_dir}/prefix/bin/scp-speedtest" --version)"
 
   assert_contains "$output" "Installed scp-speedtest" "install script reports installed binary"
-  [[ "$installed_version" == "1.1.1" ]] || fail "installed script should print version 1.1.1. Actual: ${installed_version}"
+  [[ "$installed_version" == "1.1.2" ]] || fail "installed script should print version 1.1.2. Actual: ${installed_version}"
   pass "install script installs runnable binary"
 
   rm -rf "$fixture_dir"
@@ -548,6 +577,7 @@ test_default_size_and_positional_target
 test_target_option
 test_stdin_execution
 test_default_suppresses_weak_crypto_warning
+test_proxyjump_warning_suppression_uses_proxycommand
 test_size_specific_filename
 test_explicit_connection_options
 test_quiet_option

@@ -10,7 +10,7 @@ fi
 
 set -euo pipefail
 
-VERSION="1.1.1"
+VERSION="1.1.2"
 DEFAULT_SIZE="100M"
 PROJECT_URL="https://github.com/cpiz/scp-speedtest"
 
@@ -40,6 +40,8 @@ SSH_OPTIONS=()
 SSH_CMD=()
 SCP_CMD=()
 WARN_WEAK_CRYPTO_SUPPORTED=""
+EFFECTIVE_PROXY_JUMP_CHECKED=0
+EFFECTIVE_PROXY_JUMP=""
 
 LOCAL_TMP_DIR=""
 LOCAL_DOWNLOAD_DIR=""
@@ -104,7 +106,7 @@ Usage:
 
 Description:
   Measure upload and download throughput with scp.
-  Version: 1.1.1
+  Version: 1.1.2
   Authentication is handled by ssh/scp; this script does not store passwords.
   GitHub: https://github.com/cpiz/scp-speedtest
 
@@ -556,12 +558,78 @@ should_suppress_weak_crypto_warning() {
   ssh_supports_warn_weak_crypto
 }
 
+detect_effective_proxy_jump() {
+  local -a probe_cmd
+  local opt proxy_jump
+
+  if ((EFFECTIVE_PROXY_JUMP_CHECKED == 1)); then
+    [[ -n "$EFFECTIVE_PROXY_JUMP" ]]
+    return
+  fi
+
+  EFFECTIVE_PROXY_JUMP_CHECKED=1
+  EFFECTIVE_PROXY_JUMP=""
+
+  if [[ -n "$JUMP_HOST" ]]; then
+    EFFECTIVE_PROXY_JUMP="$JUMP_HOST"
+    return 0
+  fi
+
+  has_ssh_option_key "ProxyCommand" && return 1
+  has_ssh_option_key "ProxyJump" && return 1
+
+  probe_cmd=(ssh)
+  [[ -z "$SSH_CONFIG" ]] || probe_cmd+=(-F "$SSH_CONFIG")
+  [[ -z "$PORT" ]] || probe_cmd+=(-p "$PORT")
+  [[ -z "$IDENTITY_FILE" ]] || probe_cmd+=(-i "$IDENTITY_FILE")
+  [[ -z "$CONNECT_TIMEOUT" ]] || probe_cmd+=(-o "ConnectTimeout=${CONNECT_TIMEOUT}")
+  for opt in "${SSH_OPTIONS[@]+"${SSH_OPTIONS[@]}"}"; do
+    probe_cmd+=(-o "$opt")
+  done
+
+  proxy_jump="$("${probe_cmd[@]}" -G "$REMOTE_SPEC" 2>/dev/null | awk 'tolower($1) == "proxyjump" { print $2; exit }')"
+  [[ -n "$proxy_jump" && "$proxy_jump" != "none" ]] || return 1
+  [[ "$proxy_jump" != *,* ]] || return 1
+
+  EFFECTIVE_PROXY_JUMP="$proxy_jump"
+  return 0
+}
+
+build_warning_proxy_command() {
+  local proxy_jump="$1"
+  local -a proxy_cmd
+  local opt key
+
+  proxy_cmd=(ssh)
+  [[ -z "$SSH_CONFIG" ]] || proxy_cmd+=(-F "$SSH_CONFIG")
+  if should_suppress_ssh_warnings && ! has_ssh_option_key "LogLevel"; then
+    proxy_cmd+=(-o "LogLevel=ERROR")
+  fi
+  if should_suppress_weak_crypto_warning; then
+    proxy_cmd+=(-o "WarnWeakCrypto=no")
+  fi
+  for opt in "${SSH_OPTIONS[@]+"${SSH_OPTIONS[@]}"}"; do
+    key="${opt%%=*}"
+    key="$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]')"
+    case "$key" in
+      loglevel | warnweakcrypto) proxy_cmd+=(-o "$opt") ;;
+    esac
+  done
+  proxy_cmd+=(-W "%h:%p" "$proxy_jump")
+
+  command_to_string "${proxy_cmd[@]}"
+}
+
 build_ssh_cmd() {
   SSH_CMD=(ssh)
   [[ -z "$SSH_CONFIG" ]] || SSH_CMD+=(-F "$SSH_CONFIG")
   [[ -z "$PORT" ]] || SSH_CMD+=(-p "$PORT")
   [[ -z "$IDENTITY_FILE" ]] || SSH_CMD+=(-i "$IDENTITY_FILE")
-  [[ -z "$JUMP_HOST" ]] || SSH_CMD+=(-J "$JUMP_HOST")
+  if should_suppress_ssh_warnings && detect_effective_proxy_jump; then
+    SSH_CMD+=(-o "ProxyCommand=$(build_warning_proxy_command "$EFFECTIVE_PROXY_JUMP")")
+  elif [[ -n "$JUMP_HOST" ]]; then
+    SSH_CMD+=(-J "$JUMP_HOST")
+  fi
   [[ -z "$CONNECT_TIMEOUT" ]] || SSH_CMD+=(-o "ConnectTimeout=${CONNECT_TIMEOUT}")
   if should_suppress_ssh_warnings && ! has_ssh_option_key "LogLevel"; then
     SSH_CMD+=(-o "LogLevel=ERROR")
@@ -580,7 +648,11 @@ build_scp_cmd() {
   [[ -z "$SSH_CONFIG" ]] || SCP_CMD+=(-F "$SSH_CONFIG")
   [[ -z "$PORT" ]] || SCP_CMD+=(-P "$PORT")
   [[ -z "$IDENTITY_FILE" ]] || SCP_CMD+=(-i "$IDENTITY_FILE")
-  [[ -z "$JUMP_HOST" ]] || SCP_CMD+=(-J "$JUMP_HOST")
+  if should_suppress_ssh_warnings && detect_effective_proxy_jump; then
+    SCP_CMD+=(-o "ProxyCommand=$(build_warning_proxy_command "$EFFECTIVE_PROXY_JUMP")")
+  elif [[ -n "$JUMP_HOST" ]]; then
+    SCP_CMD+=(-J "$JUMP_HOST")
+  fi
   [[ -z "$CONNECT_TIMEOUT" ]] || SCP_CMD+=(-o "ConnectTimeout=${CONNECT_TIMEOUT}")
   if should_suppress_ssh_warnings && ! has_ssh_option_key "LogLevel"; then
     SCP_CMD+=(-o "LogLevel=ERROR")
