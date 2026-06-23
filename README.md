@@ -201,6 +201,7 @@ If you need raw network capacity, `iperf3` is a better fit. If you care about re
 - Use `--dry-run` to inspect command construction without connecting to the remote host.
 - Use `--quiet` to hide progress events and the `scp` progress bar.
 - Use `--max-duration <seconds>` when a link is slow and you want a transfer timeout instead of a manual interrupt.
+- Runtime failures print a final failure card with the target, failed step, exit code, and project URL.
 
 ## Local Verification
 

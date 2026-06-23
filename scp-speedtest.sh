@@ -59,6 +59,8 @@ STARTED_AT=""
 ENDED_AT=""
 REMOTE_GENERATOR=""
 REMOTE_GENERATOR_STATUS="skipped"
+CURRENT_STEP=""
+ERROR_CARD_PRINTED=0
 ROUND_INDEX=1
 ROUND_STARTED_ATS=()
 ROUND_ENDED_ATS=()
@@ -82,6 +84,11 @@ die() {
 log_event() {
   ((QUIET == 1)) && return 0
   printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$*" >&2
+}
+
+log_step() {
+  CURRENT_STEP="$*"
+  log_event "$*"
 }
 
 usage() {
@@ -581,13 +588,13 @@ prepare_remote_dir() {
   build_ssh_cmd
 
   if [[ -n "$REMOTE_DIR" ]]; then
-    log_event "Connecting and preparing remote directory: ${REMOTE_SPEC}:${REMOTE_DIR}"
+    log_step "Connecting and preparing remote directory: ${REMOTE_SPEC}:${REMOTE_DIR}"
     "${SSH_CMD[@]}" "$REMOTE_SPEC" "mkdir -p -- $(shell_quote "$REMOTE_DIR")"
     REMOTE_TMP_DIR="$REMOTE_DIR"
     REMOTE_TMP_CREATED=0
     log_event "Remote directory ready: ${REMOTE_DIR}"
   else
-    log_event "Connecting and creating remote temporary directory: ${REMOTE_SPEC}"
+    log_step "Connecting and creating remote temporary directory: ${REMOTE_SPEC}"
     # shellcheck disable=SC2016
     REMOTE_TMP_DIR="$("${SSH_CMD[@]}" "$REMOTE_SPEC" 'tmp_base="${TMPDIR:-/tmp}"; tmp_base="${tmp_base%/}"; mktemp -d "${tmp_base}/scp-speedtest.XXXXXX"')"
     [[ -n "$REMOTE_TMP_DIR" ]] || die "failed to create remote temporary directory"
@@ -616,6 +623,10 @@ cleanup() {
   else
     [[ -z "$LOCAL_TMP_DIR" ]] || printf 'Kept local temporary directory: %s\n' "$LOCAL_TMP_DIR" >&2
     [[ -z "$REMOTE_TMP_DIR" ]] || printf 'Kept remote temporary directory: %s\n' "$REMOTE_TMP_DIR" >&2
+  fi
+  if [[ "$exit_code" -ne 0 && "$ERROR_CARD_PRINTED" -eq 0 && -n "$REMOTE_SPEC" ]]; then
+    print_error_result "$exit_code" >&2
+    ERROR_CARD_PRINTED=1
   fi
   return "$exit_code"
 }
@@ -740,6 +751,21 @@ print_human_summary() {
   print_result_rule
 }
 
+print_error_result() {
+  local exit_code="$1"
+  print_result_rule
+  printf '%s\n' "$(style_text "1;31" "scp-speedtest failed")"
+  printf 'GitHub   : %s\n' "$PROJECT_URL"
+  printf 'Target   : %s\n' "$REMOTE_SPEC"
+  [[ -z "$TEST_FILE_NAME" ]] || printf 'Test file: %s\n' "$TEST_FILE_NAME"
+  [[ -z "$CURRENT_STEP" ]] || printf 'Step     : %s\n' "$CURRENT_STEP"
+  printf 'Exit code: %s\n' "$exit_code"
+  printf '%s\n' '----------------------------------------------------------------------'
+  printf '%s\n' 'The underlying ssh/scp error is shown above.'
+  printf '%s\n' 'Use --dry-run to inspect resolved commands without connecting.'
+  print_result_rule
+}
+
 print_json_result() {
   local bytes="$1"
 
@@ -839,6 +865,7 @@ reset_round_state() {
   ENDED_AT=""
   REMOTE_GENERATOR=""
   REMOTE_GENERATOR_STATUS="skipped"
+  CURRENT_STEP=""
 }
 
 collect_round_result() {
@@ -906,10 +933,10 @@ run_speedtest() {
   if ((ROUNDS > 1)); then
     log_event "Round ${ROUND_INDEX}/${ROUNDS}"
   fi
-  log_event "Target: ${REMOTE_SPEC}"
-  log_event "Creating local test file: ${local_file} (${SIZE} / ${bytes} bytes)"
+  log_step "Target: ${REMOTE_SPEC}"
+  log_step "Creating local test file: ${local_file} (${SIZE} / ${bytes} bytes)"
   generate_test_file "$local_file" "$bytes"
-  log_event "Local test file created; calculating source checksum"
+  log_step "Local test file created; calculating source checksum"
   source_hash="$(checksum_file "$local_file")"
 
   prepare_remote_dir
@@ -917,7 +944,7 @@ run_speedtest() {
 
   build_scp_cmd
 
-  log_event "Starting upload: ${local_file} -> $(format_remote_scp_path "$REMOTE_TEST_FILE")"
+  log_step "Starting upload: ${local_file} -> $(format_remote_scp_path "$REMOTE_TEST_FILE")"
   upload_start="$(now_seconds)"
   run_scp_interruptible "${SCP_CMD[@]}" "$local_file" "$(format_remote_scp_path "$REMOTE_TEST_FILE")"
   upload_end="$(now_seconds)"
@@ -941,13 +968,13 @@ run_speedtest() {
   UPLOAD_MIBPS="$(calc_mibps "$UPLOAD_BYTES" "$UPLOAD_SECONDS")"
   log_event "Upload $(status_label "$UPLOAD_STATUS"): ${UPLOAD_BYTES} bytes, ${UPLOAD_SECONDS} seconds, ${UPLOAD_MIBPS} MiB/s"
 
-  log_event "Preparing remote download test file: ${REMOTE_SPEC}:${REMOTE_TEST_FILE} (${SIZE} / ${bytes} bytes)"
+  log_step "Preparing remote download test file: ${REMOTE_SPEC}:${REMOTE_TEST_FILE} (${SIZE} / ${bytes} bytes)"
   build_ssh_cmd
   "${SSH_CMD[@]}" "$REMOTE_SPEC" "rm -f -- $(shell_quote "$REMOTE_TEST_FILE")"
   generate_remote_test_file "$REMOTE_TEST_FILE" "$bytes"
   log_event "Remote download test file ready (method: ${REMOTE_GENERATOR})"
 
-  log_event "Starting download: $(format_remote_scp_path "$REMOTE_TEST_FILE") -> ${download_file}"
+  log_step "Starting download: $(format_remote_scp_path "$REMOTE_TEST_FILE") -> ${download_file}"
   download_start="$(now_seconds)"
   run_scp_interruptible "${SCP_CMD[@]}" "$(format_remote_scp_path "$REMOTE_TEST_FILE")" "$download_file"
   download_end="$(now_seconds)"
@@ -972,7 +999,7 @@ run_speedtest() {
   log_event "Download $(status_label "$DOWNLOAD_STATUS"): ${DOWNLOAD_BYTES} bytes, ${DOWNLOAD_SECONDS} seconds, ${DOWNLOAD_MIBPS} MiB/s"
 
   if [[ "$DOWNLOAD_STATUS" == "completed" && "$DOWNLOAD_BYTES" -eq "$bytes" ]]; then
-    log_event "Verifying downloaded file checksum"
+    log_step "Verifying downloaded file checksum"
     download_hash="$(checksum_file "$download_file")"
     [[ "$source_hash" == "$download_hash" ]] || die "downloaded file checksum verification failed"
     log_event "Checksum verification passed"

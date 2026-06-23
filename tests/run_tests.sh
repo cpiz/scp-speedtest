@@ -195,6 +195,25 @@ test_partial_transfer_output() {
   assert_contains "$output" "Download : COMPLETED" "interrupted upload does not affect full download output"
 }
 
+test_error_result_output() {
+  # shellcheck disable=SC1090
+  source "$SCRIPT"
+
+  REMOTE_SPEC="speedtest"
+  TEST_FILE_NAME="scp-speedtest-100M.bin"
+  CURRENT_STEP="Connecting and creating remote temporary directory: speedtest"
+
+  local output
+  output="$(print_error_result 255 2>&1)"
+
+  assert_contains "$output" "scp-speedtest failed" "error result prints a prominent title"
+  assert_contains "$output" "GitHub   : https://github.com/cpiz/scp-speedtest" "error result includes project URL"
+  assert_contains "$output" "Target   : speedtest" "error result includes target"
+  assert_contains "$output" "Step     : Connecting and creating remote temporary directory: speedtest" "error result includes failed step"
+  assert_contains "$output" "Exit code: 255" "error result includes exit code"
+  assert_contains "$output" "Use --dry-run" "error result suggests dry run"
+}
+
 test_timeout_status_detection() {
   # shellcheck disable=SC1090
   source "$SCRIPT"
@@ -400,6 +419,7 @@ test_rounds_dry_run
 test_requires_bash
 test_remote_scp_path_format
 test_partial_transfer_output
+test_error_result_output
 test_timeout_status_detection
 test_fake_ssh_scp_full_flow_json
 test_fake_ssh_scp_multi_round_json
