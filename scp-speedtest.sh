@@ -10,7 +10,7 @@ fi
 
 set -euo pipefail
 
-VERSION="1.1.0"
+VERSION="1.1.1"
 DEFAULT_SIZE="100M"
 PROJECT_URL="https://github.com/cpiz/scp-speedtest"
 
@@ -104,7 +104,7 @@ Usage:
 
 Description:
   Measure upload and download throughput with scp.
-  Version: 1.1.0
+  Version: 1.1.1
   Authentication is handled by ssh/scp; this script does not store passwords.
   GitHub: https://github.com/cpiz/scp-speedtest
 
@@ -547,6 +547,11 @@ ssh_supports_warn_weak_crypto() {
 
 should_suppress_ssh_warnings() {
   ((SHOW_SSH_WARNINGS == 0)) || return 1
+  return 0
+}
+
+should_suppress_weak_crypto_warning() {
+  should_suppress_ssh_warnings || return 1
   has_ssh_option_key "WarnWeakCrypto" && return 1
   ssh_supports_warn_weak_crypto
 }
@@ -558,7 +563,10 @@ build_ssh_cmd() {
   [[ -z "$IDENTITY_FILE" ]] || SSH_CMD+=(-i "$IDENTITY_FILE")
   [[ -z "$JUMP_HOST" ]] || SSH_CMD+=(-J "$JUMP_HOST")
   [[ -z "$CONNECT_TIMEOUT" ]] || SSH_CMD+=(-o "ConnectTimeout=${CONNECT_TIMEOUT}")
-  should_suppress_ssh_warnings && SSH_CMD+=(-o "WarnWeakCrypto=no")
+  if should_suppress_ssh_warnings && ! has_ssh_option_key "LogLevel"; then
+    SSH_CMD+=(-o "LogLevel=ERROR")
+  fi
+  should_suppress_weak_crypto_warning && SSH_CMD+=(-o "WarnWeakCrypto=no")
   local opt
   for opt in "${SSH_OPTIONS[@]+"${SSH_OPTIONS[@]}"}"; do
     SSH_CMD+=(-o "$opt")
@@ -574,7 +582,10 @@ build_scp_cmd() {
   [[ -z "$IDENTITY_FILE" ]] || SCP_CMD+=(-i "$IDENTITY_FILE")
   [[ -z "$JUMP_HOST" ]] || SCP_CMD+=(-J "$JUMP_HOST")
   [[ -z "$CONNECT_TIMEOUT" ]] || SCP_CMD+=(-o "ConnectTimeout=${CONNECT_TIMEOUT}")
-  should_suppress_ssh_warnings && SCP_CMD+=(-o "WarnWeakCrypto=no")
+  if should_suppress_ssh_warnings && ! has_ssh_option_key "LogLevel"; then
+    SCP_CMD+=(-o "LogLevel=ERROR")
+  fi
+  should_suppress_weak_crypto_warning && SCP_CMD+=(-o "WarnWeakCrypto=no")
   local opt
   for opt in "${SSH_OPTIONS[@]+"${SSH_OPTIONS[@]}"}"; do
     SCP_CMD+=(-o "$opt")

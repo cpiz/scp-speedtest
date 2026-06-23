@@ -73,7 +73,7 @@ test_no_arguments_prints_help() {
 
   [[ "$status" -eq 0 ]] || fail "no arguments should print help and exit 0. Status: ${status}. Output: ${output}"
   assert_contains "$output" "Usage:" "no arguments prints usage"
-  assert_contains "$output" "Version: 1.1.0" "no arguments prints version"
+  assert_contains "$output" "Version: 1.1.1" "no arguments prints version"
   assert_contains "$output" "Options:" "no arguments prints options"
   assert_contains "$output" "Examples:" "no arguments prints examples"
   assert_contains "$output" "GitHub: https://github.com/cpiz/scp-speedtest" "no arguments prints project URL"
@@ -124,14 +124,21 @@ EOF
   chmod +x "${fixture_dir}/bin/ssh"
 
   output="$(PATH="${fixture_dir}/bin:$PATH" bash "$SCRIPT" my-vps --dry-run)"
+  assert_contains "$output" "-o LogLevel=ERROR" "default SSH/SCP commands suppress warning-level ssh output"
   assert_contains "$output" "-o WarnWeakCrypto=no" "default SSH/SCP commands suppress weak crypto warnings when supported"
 
   output="$(PATH="${fixture_dir}/bin:$PATH" bash "$SCRIPT" my-vps --show-ssh-warnings --dry-run)"
+  assert_not_contains "$output" "LogLevel=ERROR" "--show-ssh-warnings disables default log level suppression"
   assert_not_contains "$output" "WarnWeakCrypto=no" "--show-ssh-warnings disables default warning suppression"
 
   output="$(PATH="${fixture_dir}/bin:$PATH" bash "$SCRIPT" my-vps --ssh-option WarnWeakCrypto=yes --dry-run)"
+  assert_contains "$output" "-o LogLevel=ERROR" "explicit WarnWeakCrypto keeps default log level suppression"
   assert_contains "$output" "-o WarnWeakCrypto=yes" "explicit WarnWeakCrypto option is preserved"
   assert_not_contains "$output" "-o WarnWeakCrypto=no" "explicit WarnWeakCrypto option overrides default suppression"
+
+  output="$(PATH="${fixture_dir}/bin:$PATH" bash "$SCRIPT" my-vps --ssh-option LogLevel=INFO --dry-run)"
+  assert_contains "$output" "-o LogLevel=INFO" "explicit LogLevel option is preserved"
+  assert_not_contains "$output" "-o LogLevel=ERROR" "explicit LogLevel option overrides default log level suppression"
 
   rm -rf "$fixture_dir"
 }
@@ -530,7 +537,7 @@ test_install_script_local_install() {
   installed_version="$("${fixture_dir}/prefix/bin/scp-speedtest" --version)"
 
   assert_contains "$output" "Installed scp-speedtest" "install script reports installed binary"
-  [[ "$installed_version" == "1.1.0" ]] || fail "installed script should print version 1.1.0. Actual: ${installed_version}"
+  [[ "$installed_version" == "1.1.1" ]] || fail "installed script should print version 1.1.1. Actual: ${installed_version}"
   pass "install script installs runnable binary"
 
   rm -rf "$fixture_dir"
